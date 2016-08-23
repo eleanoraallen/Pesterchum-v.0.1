@@ -97,6 +97,9 @@
 ;;  - "request"        : a friend request from one user to another
 ;;  - "request-accept" : user excepts friend request (server-only)
 ;;  - "friends"        : list of users online and their status'
+;;  - "block"          : user blocks other user (server only)
+;;  - "login-fail"     : failed login attempt
+;;  - "create-fail"    : failed to create user
 ;; content is an is the contence of a message which is:
 ;;  - for login content will be password
 ;;  - for login-data content will be '(text-color friends pesters requests)
@@ -105,6 +108,9 @@
 ;;  - for request the content will be empty
 ;;  - for request-accept the content will be friends-username
 ;;  - for friends the content will be 'a list of '(username status)
+;;  - for block content is the username of the friend user wants to block
+;;  - for login-fail content is empty
+;;  - for create-fail content is empty
 
 ;; pestertext : string int color --> image
 ;; takes a string, int, and color and outputs a coresponding text image
@@ -369,7 +375,13 @@
     (beside (rectangle 8 0 'solid 'pink)
             (above/align
              "left"
-             (pestertext " CHUMROLL:" 16 'black)
+             (beside (pestertext " CHUMROLL:" 16 'black)
+                     (rectangle 180 0 'solid 'pink)
+                     (if (> (length (user-friends w)) VIEWINT)
+                         (beside (triangle 10 'solid 'black)
+                                 (rectangle 0 1 'solid 'pink)
+                                 (rotate 180 (triangle 10 'solid 'black)))
+                         (square 0 'solid 'pink)))
              (rectangle 0 5 'solid 'pink)
              (above (overlay/align
                      "middle" "top"
@@ -378,7 +390,9 @@
                     (rectangle 0 7 'solid 'pink)
                     (beside
                      (overlay (pestertext "ADD CHUM!" 14 'black)
-                              (rectangle 90 20 'solid 'yellow)
+                              (if (> (length (user-requests w)) 0)
+                                  (rectangle 90 20 'solid 'green)
+                                  (rectangle 90 20 'solid 'yellow))
                               (rectangle 94 24 'solid 'tan))
                      (rectangle 10 0 'solid 'pink)
                      (overlay (pestertext "BLOCK!" 14 'black)
@@ -578,7 +592,7 @@
                           (if (or (eq? (user-create-editing w) 4)
                                   (eq? (user-create-editing w) 0))
                               1 (+ (user-create-editing w) 1)))]
-       [(key=? k "escape") (make-user-login "" "" 1)]
+       [(key=? k "escape") (make-user-login "" "" 0)]
        [(key=? k "\b")
         (cond
           [(eq? (user-create-editing w) 1)
@@ -682,6 +696,8 @@
                 (user-pesters w)
                 (user-tab w)
                 (user-text w))]
+    [(eq? (third m) "login-fail") (make-user-login "Login failed!" "" 0)]
+    [(eq? (third m) "create-fail") (make-user-login "Account creation failed!" "" 0)]
     [else (error 'unexpected_message)]))
 
 
@@ -714,26 +730,106 @@
   (cond
     [(not (eq? m "button-down")) w]
     [(user? w) (handle-user-mouse w x y m)]
-    [(user-login? w) (cond
-                       ;; select username field
-                       [(< y 270)
-                        (make-user-login (user-login-username w)
-                                                   (user-login-password w)
-                                                   1)]
-                       ;; select password field
-                       [(and (> y 270) (> y 330))
-                             (make-user-login (user-login-username w)
-                                              (user-login-password w)
-                                              2)]
-                       ;; create account button
-                       [(and (> y 340) (< y 370))
-                        (if (and (> x 290)
-                        
+    [(user-login? w)
+     (cond
+       ;; select username field
+       [(< y 270)
+        (make-user-login (user-login-username w)
+                         (user-login-password w)
+                         1)]
+       ;; select password field
+       [(and (> y 270) (> y 330))
+        (make-user-login (user-login-username w)
+                         (user-login-password w)
+                         2)]
+       ;; create account & login buttons
+       [(and (> y 340) (< y 370))
+        (if (and (> x 290) (< x 440))
+            (make-user-create "" "" "" "" 0)
+            (if (and (> x 490) (< x 640))
+                (make-package
+                 (make-user-login "" "" 0)
+                 '((user-login-username w) "server" "login" (user-login-password w)))
+                w))]
+       [else w])]
+    [(user-create? w)
+     (cond
+       ;; edit username field
+       [(< y 220) (make-user-create (user-create-username w) (user-create-text-color w)
+                                    (user-create-password1 w) (user-create-password2 w) 1)]
+       ;; edit text-color field
+       [(< y 270) (make-user-create (user-create-username w) (user-create-text-color w)
+                                    (user-create-password1 w) (user-create-password2 w) 2)]
+       ;; edit password1 field
+       [(< y 320) (make-user-create (user-create-username w) (user-create-text-color w)
+                                    (user-create-password1 w) (user-create-password2 w) 3)]
+       ;; edit password2 field
+       [(< y 365) (make-user-create (user-create-username w) (user-create-text-color w)
+                                    (user-create-password1 w) (user-create-password2 w) 4)]
+       ;; back to login and create account buttons
+       [(and (> y 390) (< y 420))
+        (if (and (> x 290) (< x 440))
+            (make-user-login "" "" 0)
+            (if (and (> x 490) (< x 640))
+                (make-package
+                 (make-user-login "" "" 0)
+                 '((user-create-username w) "server" "new-user" '((user-create-text-color w) (user-create-password1 w))))
+                w))]
+       [else w])]  
     [else (error 'unexpected_worldstate!)]))
 
 ;; handle-user-mouse : user, int, int, mouse-event --> world
 ;; applies mouse input to user
-(define (handle-user-mouse w x y m) w)
+(define (handle-user-mouse w x y m)
+  (cond
+    ;; status buttons
+    [(and (> y 500) (< x 310))
+     (make-user
+      (user-username w)
+      (cond
+        [(< x 110) (if (y < 550) 'c 'pe)]
+        [(< x 220) (if (y < 550) 'b 'ch)]
+        [else (if (< y 550) 'p 'r)])
+      (user-text-color w) (user-friends w) (user-viewing w)
+      (user-pesters w) (user-requests w) (user-tab w) (user-text w))]
+    ;; add chum, block, pester buttons
+    [(and (> y 390) (< y 410) (x < 310))
+     (cond
+       ;; add chum button
+       [(and (> x 10) (< x 110))
+        (if (eq? (user-tab w) "requests")
+            w
+            (make-user (user-username w) (user-status w) (user-text-color w)
+                       (user-friends w) (user-viewing w) (user-pesters w)
+                       (user-requests w) "requests" (user-text w)))]
+       ;; block button
+       [(and (> x 110) (< x 210))
+        (if (or (eq? (user-tab w) "requests") (eq? (user-tab "none")))
+            w
+            (make-package
+             (make-user (user-username w) (user-status w) (user-text-color w)
+                        (user-friends w) (user-viewing w) (user-pesters w)
+                        (user-requests w) "none" (user-text w))
+             '((user-create-username w) "server" "block" (user-tab w))))]
+       ;; pester button
+       [else
+        (if (or (eq? (user-tab w) "requests") (eq? (user-tab "none")))
+            w
+            (if (>= (length (filter (lambda (x) (or (eq? (second x) (user-tab w))
+                                                    (eq? (first x) (user-tab w)))) (user-pesters w))) MAXPESTERS)
+                (cons '((user-username w) (user-tab w) "pester" '((user-text w) (user-text-color w)))
+                      (append
+                       (reverse (rest (reverse (filter (lambda (x) (or (eq? (second x) (user-tab w))
+                                                                       (eq? (first x) (user-tab w))))
+                                                       (user-pesters w)))))
+                       (filter (lambda (x) (or (eq? (second x) (user-tab w)) (eq? (first x) (user-tab w)))) (user-pesters w))))
+                (cons '((user-username w) (user-tab w) "pester" '((user-text w) (user-text-color w))) (user-pesters w))))])]
+    ;; send request button
+    [(and (> x 760) (> y 560) (eq? (user-tab w) "requests"))
+     (make-package
+      (make-user (user-username w) (user-status w) (user-text-color w) (user-friends w)
+                 (user-viewing w) (user-requests w) (user-tab w) "")
+      '((user-username w) (user-text w) "request" empty))]))
 
 ;; impose-grid : image, int --> image
 ;; imposes a grid of int x int boxes over a given image
