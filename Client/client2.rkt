@@ -4,14 +4,6 @@
 (require 2htdp/image)
 (require 2htdp/batch-io)
 
-;; known bugs:
-;; mouse handleing on friendslist
-;; mousehandling on login
-;; key handling on user-create
-;; can add to many characters on user-login
-;; can add to many characters on user pester
-;; pesters sent not added to list (could be result of not being connected to server)
-
 ;; -----------------------------------------------------------------------------------------
 ;; DEFINITIONS
 ;; -----------------------------------------------------------------------------------------
@@ -39,6 +31,7 @@
 ;;  - 2 : editing password field
 (define-struct user-login (username password editing))
 (define TEST-USER-LOGIN (make-user-login "testUser" "Dragon" 0))
+(define STARTING-WORLD (make-user-login "" "" 0))
 
 ;; a user-create is a (make-user-create string string string string) where:
 ;; the first string is the username field
@@ -78,19 +71,24 @@
 
 ;; the fourth string is the text the user is typing
 (define-struct user (username status text-color friends viewing pesters requests tab text))
-(define TEST-USER (make-user "testUser" 'c "blue"
-                             (list (list "testusersFriend" 'o false)
-                                   (list "testusersotherFriend" 'c true))
-                             1 (list (list "testusersFriend" "testUser" "pester"
-                                           (list "hello" "red"))
-                                     (list "testUser" "testusersFriend" "pester"
-                                           (list "hello back" "blue"))
-                                     (list "testusersFriend" "testUser" "pester"
-                                           (list "testing longer text message" "red")))
-                             (list
-                              (list "wantstobetusFriend" "testUser" "request")
-                              (list "alsowantstobetusFriend" "testUser" "request"))
-                             "requests" "test text is made for testing"))
+(define TEST-USER
+  (make-user "testUser" 'c "blue"
+             (list (list "testusersFriend" 'o false)
+                   (list "testusersotherFriend" 'c true))
+             1 (list (list "testusersFriend" "testUser" "pester"
+                           (list "hello," "red"))
+                     (list "pesterchumDev" "testUser" "pester"
+                           (list "hello" "red"))
+                     (list "pesterchumDev" "testUser" "pester"
+                           (list "this is a test notice" "red"))
+                     (list "testUser" "testusersFriend" "pester"
+                           (list "hello back" "blue"))
+                     (list "testusersFriend" "testUser" "pester"
+                           (list "testing longer text message" "red")))
+             (list
+              (list "wantstobetusFriend" "testUser" "request")
+              (list "alsowantstobetusFriend" "testUser" "request"))
+             "requests" "test text is made for testing"))
 
 ;; a message is a '(string string string content) where:
 ;; the first string is the username of the sender of the message
@@ -125,12 +123,30 @@
 (define (pestertext t s c) (text/font t s c "Courier New" 'default 'normal 'bold false))
 
 ;; Status Buttons:
-(define CHUMMY (overlay/align "left" "middle" (beside (rectangle 27 0 'solid 'gold) (pestertext " CHUMMY" 14 'black)) (bitmap/file "button1.png")))
-(define BULLY (overlay/align "left" "middle" (beside (rectangle 27 0 'solid 'gold) (pestertext " BULLY" 14 'black)) (bitmap/file "button1.png")))
-(define PALSY (overlay/align "left" "middle" (beside (rectangle 27 0 'solid 'gold) (pestertext " PALSY" 14 'black)) (bitmap/file "button1.png")))
-(define PEPPY (overlay/align "left" "middle" (beside (rectangle 27 0 'solid 'gold) (pestertext " PEPPY" 14 'black)) (bitmap/file "button1.png")))
-(define CHIPPER (overlay/align "left" "middle" (beside (rectangle 22 0 'solid 'gold) (pestertext " CHIPPER" 14 'black)) (bitmap/file "button1.png")))
-(define RANCOROUS (overlay/align "left" "middle" (beside (rectangle 21 0 'solid 'red) (pestertext " RANCOROUS" 11 'black)) (bitmap/file "button2.png")))
+(define CHUMMY (overlay/align "left" "middle"
+                              (beside (rectangle 27 0 'solid 'gold)
+                                      (pestertext " CHUMMY" 14 'black))
+                              (bitmap/file "button1.png")))
+(define BULLY (overlay/align "left" "middle"
+                             (beside (rectangle 27 0 'solid 'gold)
+                                     (pestertext " BULLY" 14 'black))
+                             (bitmap/file "button1.png")))
+(define PALSY (overlay/align "left" "middle"
+                             (beside (rectangle 27 0 'solid 'gold)
+                                     (pestertext " PALSY" 14 'black))
+                             (bitmap/file "button1.png")))
+(define PEPPY (overlay/align "left" "middle"
+                             (beside (rectangle 27 0 'solid 'gold)
+                                     (pestertext " PEPPY" 14 'black))
+                             (bitmap/file "button1.png")))
+(define CHIPPER (overlay/align "left" "middle"
+                               (beside (rectangle 22 0 'solid 'gold)
+                                       (pestertext " CHIPPER" 14 'black))
+                               (bitmap/file "button1.png")))
+(define RANCOROUS (overlay/align "left" "middle"
+                                 (beside (rectangle 21 0 'solid 'red)
+                                         (pestertext " RANCOROUS" 11 'black))
+                                 (bitmap/file "button2.png")))
 
 ;; Status Button Highlight
 (define HIGHLIGHT (overlay (rectangle 93 38 'outline 'black) (rectangle 95 40 'outline 'black)))
@@ -153,122 +169,128 @@
 ;; renders world as an image
 (define (render w)
   (cond
-    [(user? w) (beside (render-sidebar w) (rectangle 10 600 'solid 'gold) (render-tab w))]
-    [(user-login? w) (overlay/align
-                      "middle" "top"
-                      (above (rectangle 0 30 'solid 'pink)
-                             (pestertext "PESTERCHUM 0.1" 85 'white)) 
+    [(user? w) (beside (render-sidebar w)
+                       (rectangle 10 600 'solid 'gold)
+                       (render-tab w))]
+    [(user-login? w)
+     (overlay/align
+      "middle" "top"
+      (above (rectangle 0 30 'solid 'pink)
+             (pestertext "PESTERCHUM 0.1" 85 'white)) 
+      (overlay
+       (above (if (and (string=? (user-login-username w) "")
+                       (not (= (user-login-editing w) 1)))
+                  (overlay/align "left" "middle"
+                                 (pestertext " userName" 14 'gray)
+                                 (rectangle 350 30 'solid 'white))
+                  (overlay/align
+                   "left" "middle"
+                   (beside (pestertext (string-append " " (user-login-username w))
+                                       14 'black)
+                           (if (eq? (user-login-editing w) 1)
+                               (rectangle 2 17 'solid 'black)
+                               (square 0 'solid 'pink)))
+                   (rectangle 350 30 'solid 'white)))
+              (rectangle 0 20 'solid 'pink)
+              (if (and
+                   (string=? (user-login-password w) "")
+                   (not (= (user-login-editing w) 2)))
+                  (overlay/align
+                   "left" "middle"
+                   (pestertext " password" 14 'gray)
+                   (rectangle 350 30 'solid 'white))
+                  (overlay/align
+                   "left" "middle"
+                   (beside (rectangle 8 0 'solid 'pink)
+                           (pestertext
+                            (hidden-string
+                             (string-length (user-login-password w)))
+                            14 'black)
+                           (if (eq? (user-login-editing w) 2)
+                               (rectangle 2 17 'solid 'black)
+                               (square 0 'solid 'pink)))
+                   (rectangle 350 30 'solid 'white)))
+              (rectangle 0 30 'solid 'pink)
+              (beside (overlay
+                       (pestertext "CREATE ACCOUNT!" 14 'black)
+                       (rectangle 146 26 'solid 'yellow)
+                       (rectangle 150 30 'solid 'tan))
+                      (rectangle 50 0 'solid 'pink)
                       (overlay
-                       (above (if (and
-                                   (string=? (user-login-username w) "")
-                                   (not (= (user-login-editing w) 1)))
-                                  (overlay/align
-                                   "left" "middle"
-                                   (pestertext " userName" 14 'gray)
-                                   (rectangle 350 30 'solid 'white))
-                                  (overlay/align
-                                   "left" "middle"
-                                   (beside (pestertext (string-append " " (user-login-username w)) 14 'black)
-                                           (if (eq? (user-login-editing w) 1)
-                                               (rectangle 2 17 'solid 'black)
-                                               (square 0 'solid 'pink)))
-                                   (rectangle 350 30 'solid 'white)))
-                              (rectangle 0 20 'solid 'pink)
-                              (if (and
-                                   (string=? (user-login-password w) "")
-                                   (not (= (user-login-editing w) 2)))
-                                  (overlay/align
-                                   "left" "middle"
-                                   (pestertext " password" 14 'gray)
-                                   (rectangle 350 30 'solid 'white))
-                                  (overlay/align
-                                   "left" "middle"
-                                   (beside (rectangle 8 0 'solid 'pink)
-                                           (pestertext (hidden-string (string-length (user-login-password w))) 14 'black)
-                                           (if (eq? (user-login-editing w) 2)
-                                               (rectangle 2 17 'solid 'black)
-                                               (square 0 'solid 'pink)))
-                                   (rectangle 350 30 'solid 'white)))
-                              (rectangle 0 30 'solid 'pink)
-                              (beside (overlay
-                                       (pestertext "CREATE ACCOUNT!" 14 'black)
-                                       (rectangle 146 26 'solid 'yellow)
-                                       (rectangle 150 30 'solid 'tan))
-                                      (rectangle 50 0 'solid 'pink)
-                                      (overlay
-                                       (pestertext "LOGIN!" 16 'black)
-                                       (rectangle 146 26 'solid 'yellow)
-                                       (rectangle 150 30 'solid 'tan))))
-                       (rectangle 925 600 'solid 'gold)))]
-    [(user-create? w) (overlay
-                       (above (if (and (string=? (user-create-username w) "")
-                                       (not (= (user-create-editing w) 1)))
-                                  (overlay/align
-                                   "left" "middle"
-                                   (pestertext " userName" 14 'gray)
-                                   (rectangle 350 30 'solid 'white))
-                                  (overlay/align
-                                   "left" "middle"
-                                   (beside (pestertext (string-append " " (user-create-username w)) 14 (user-create-text-color w))
-                                           (if (eq? (user-create-editing w) 1)
-                                               (rectangle 2 17 'solid 'black)
-                                               (square 0 'solid 'pink)))
-                                   (rectangle 350 30 'solid 'white)))
-                              (rectangle 0 20 'solid 'pink)
-                              (if (and (string=? (user-create-text-color w) "")
-                                       (not (= (user-create-editing w) 2)))
-                                  (overlay/align
-                                   "left" "middle"
-                                   (pestertext " text color" 14 'gray)
-                                   (rectangle 350 30 'solid 'white))
-                                  (overlay/align
-                                   "left" "middle"
-                                   (beside (pestertext (string-append " " (user-create-text-color w)) 14 (user-create-text-color w))
-                                           (if (eq? (user-create-editing w) 2)
-                                               (rectangle 2 17 'solid 'black)
-                                               (square 0 'solid 'pink)))
-                                   (rectangle 350 30 'solid 'white)))
-                              (rectangle 0 20 'solid 'pink)
-                              (if (and (string=? (user-create-password1 w) "")
-                                       (not (= (user-create-editing w) 3)))
-                                  (overlay/align
-                                   "left" "middle"
-                                   (pestertext " password" 14 'gray)
-                                   (rectangle 350 30 'solid 'white))
-                                  (overlay/align
-                                   "left" "middle"
-                                   (beside (rectangle 8 0 'solid 'pink)
-                                           (pestertext (hidden-string (string-length (user-create-password1 w))) 14 (user-create-text-color w))
-                                           (if (eq? (user-create-editing w) 3)
-                                               (rectangle 2 17 'solid 'black)
-                                               (square 0 'solid 'pink)))
-                                   (rectangle 350 30 'solid 'white)))
-                              (rectangle 0 20 'solid 'pink)
-                              (if (and (string=? (user-create-password2 w) "")
-                                       (not (= (user-create-editing w) 4)))
-                                  (overlay/align
-                                   "left" "middle"
-                                   (pestertext " re-enter password" 14 'gray)
-                                   (rectangle 350 30 'solid 'white))
-                                  (overlay/align
-                                   "left" "middle"
-                                   (beside (rectangle 8 0 'solid 'pink)
-                                           (pestertext (hidden-string (string-length (user-create-password2 w))) 14 (user-create-text-color w))
-                                           (if (eq? (user-create-editing w) 4)
-                                               (rectangle 2 17 'solid 'black)
-                                               (square 0 'solid 'pink)))
-                                   (rectangle 350 30 'solid 'white)))
-                              (rectangle 0 30 'solid 'pink)
-                              (beside (overlay
-                                       (pestertext "BACK TO LOGIN!" 14 'black)
-                                       (rectangle 146 26 'solid 'yellow)
-                                       (rectangle 150 30 'solid 'tan))
-                                      (rectangle 50 0 'solid 'pink)
-                                      (overlay
-                                       (pestertext "CREATE ACCOUNT!" 14 'black)
-                                       (rectangle 146 26 'solid 'yellow)
-                                       (rectangle 150 30 'solid 'tan))))
-                       (rectangle 925 600 'solid 'gold))]
+                       (pestertext "LOGIN!" 16 'black)
+                       (rectangle 146 26 'solid 'yellow)
+                       (rectangle 150 30 'solid 'tan))))
+       (rectangle 925 600 'solid 'gold)))]
+    [(user-create? w)
+     (overlay
+      (above (if (and (string=? (user-create-username w) "")
+                      (not (= (user-create-editing w) 1)))
+                 (overlay/align "left" "middle"
+                                (pestertext " userName" 14 'gray)
+                                (rectangle 350 30 'solid 'white))
+                 (overlay/align "left" "middle"
+                                (beside
+                                 (pestertext (string-append " " (user-create-username w))
+                                             14 (user-create-text-color w))
+                                 (if (eq? (user-create-editing w) 1)
+                                     (rectangle 2 17 'solid 'black)
+                                     (square 0 'solid 'pink)))
+                                (rectangle 350 30 'solid 'white)))
+             (rectangle 0 20 'solid 'pink)
+             (if (and (string=? (user-create-text-color w) "")
+                      (not (= (user-create-editing w) 2)))
+                 (overlay/align "left" "middle"
+                                (pestertext " text color" 14 'gray)
+                                (rectangle 350 30 'solid 'white))
+                 (overlay/align "left" "middle"
+                                (beside
+                                 (pestertext (string-append " " (user-create-text-color w))
+                                             14 (user-create-text-color w))
+                                 (if (eq? (user-create-editing w) 2)
+                                     (rectangle 2 17 'solid 'black)
+                                     (square 0 'solid 'pink)))
+                                (rectangle 350 30 'solid 'white)))
+             (rectangle 0 20 'solid 'pink)
+             (if (and (string=? (user-create-password1 w) "")
+                      (not (= (user-create-editing w) 3)))
+                 (overlay/align "left" "middle"
+                                (pestertext " password" 14 'gray)
+                                (rectangle 350 30 'solid 'white))
+                 (overlay/align "left" "middle"
+                                (beside (rectangle 8 0 'solid 'pink)
+                                        (pestertext (hidden-string
+                                                     (string-length (user-create-password1 w)))
+                                                    14 (user-create-text-color w))
+                                        (if (eq? (user-create-editing w) 3)
+                                            (rectangle 2 17 'solid 'black)
+                                            (square 0 'solid 'pink)))
+                                (rectangle 350 30 'solid 'white)))
+             (rectangle 0 20 'solid 'pink)
+             (if (and (string=? (user-create-password2 w) "")
+                      (not (= (user-create-editing w) 4)))
+                 (overlay/align "left" "middle"
+                                (pestertext " re-enter password" 14 'gray)
+                                (rectangle 350 30 'solid 'white))
+                 (overlay/align "left" "middle"
+                                (beside (rectangle 8 0 'solid 'pink)
+                                        (pestertext (hidden-string
+                                                     (string-length (user-create-password2 w)))
+                                                    14 (user-create-text-color w))
+                                        (if (eq? (user-create-editing w) 4)
+                                            (rectangle 2 17 'solid 'black)
+                                            (square 0 'solid 'pink)))
+                                (rectangle 350 30 'solid 'white)))
+             (rectangle 0 30 'solid 'pink)
+             (beside (overlay
+                      (pestertext "BACK TO LOGIN!" 14 'black)
+                      (rectangle 146 26 'solid 'yellow)
+                      (rectangle 150 30 'solid 'tan))
+                     (rectangle 50 0 'solid 'pink)
+                     (overlay
+                      (pestertext "CREATE ACCOUNT!" 14 'black)
+                      (rectangle 146 26 'solid 'yellow)
+                      (rectangle 150 30 'solid 'tan))))
+      (rectangle 925 600 'solid 'gold))]
     [else (error 'unexpected_worldstate)]))
 
 ;; hidden-string : int --> string
@@ -282,47 +304,60 @@
 ;; renders the tab portion of the program window
 (define (render-tab w)
   (cond
-    [(eq? (user-tab w) "none") (square 600 'solid 'gold)]
+    ;; none tab can be used as notice board
+    [(eq? (user-tab w) "none")
+     (local [(define (render-notice l)
+               (cond
+                 [(empty? l) (square 0 'solid 'pink)]
+                 [else (above/align "left" (pestertext (first (fourth (first l))) 15 'black)
+                              (render-notice (rest l)))]))]
+       (if (not (empty? (filter (lambda (p) (eq? (first p) "pesterchumDev")) (user-pesters w))))
+           (overlay (above (pestertext "A Message from the Developer:" 30 'black)
+                           (render-notice (filter (lambda (p) (eq? (first p) "pesterchumDev")) (user-pesters w))))
+                    (square 600 'solid 'gold))
+           (square 600 'solid 'gold)))]
     [(eq? (user-tab w) "requests")
-     (overlay
-      (above
-       (overlay/align
-        "left" "top"
-        (render-requests (first-n (user-requests w) MAXREQUESTS))
-        (rectangle 580 540 'solid 'black))
-       (rectangle 0 10 'solid 'pink)
-       (beside (overlay/align
+     (overlay (above
+               (overlay/align
+                "left" "top"
+                (render-requests (first-n (user-requests w) MAXREQUESTS))
+                (rectangle 580 540 'solid 'black))
+               (rectangle 0 10 'solid 'pink)
+               (beside (overlay/align
+                        "left" "middle"
+                        (beside (pestertext (string-append " " (user-text w)) 12 'white)
+                                (rectangle 2 17 'solid 'white))
+                        (rectangle 420 30 'solid 'black))
+                       (rectangle 10 0 'solid 'pink)
+                       (overlay (pestertext "SEND CHUM REQUEST!" 12 'black)
+                                (rectangle 146 26 'solid 'yellow)
+                                (rectangle 150 30 'solid 'tan))))
+              (square 600 'solid 'gold))]
+    [else
+     (overlay (above
+               (overlay/align
+                "left" "top"
+                (render-pesters
+                 (reverse (filter (lambda (x) (or (eq? (second x) (user-tab w))
+                                                  (eq? (first x) (user-tab w))))
+                                  (user-pesters w))))
+                (rectangle 580 540 'solid 'white))
+               (rectangle 0 10 'solid 'pink)
+               (overlay/align
                 "left" "middle"
-                (pestertext (string-append " " (user-text w)) 12 'white)
-                (rectangle 420 30 'solid 'black))
-               (rectangle 10 0 'solid 'pink)
-               (overlay (pestertext "SEND CHUM REQUEST!" 12 'black)
-                        (rectangle 146 26 'solid 'yellow)
-                        (rectangle 150 30 'solid 'tan))))
-      (square 600 'solid 'gold))]
-    [else (overlay
-           (above
-            (overlay/align "left" "top"
-                           (render-pesters
-                            (filter (lambda (x) (or (eq? (second x) (user-tab w))
-                                                    (eq? (first x) (user-tab w))))
-                                    (user-pesters w)))
-                           (rectangle 580 540 'solid 'white))
-            (rectangle 0 10 'solid 'pink)
-            (overlay/align "left" "middle"
-                           (pestertext (string-append " " (user-text w))
-                                       12 (user-text-color w))
-                           (rectangle 580 30 'solid 'white)))
-           (square 600 'solid 'gold))]))
+                (beside (pestertext
+                         (string-append " " (user-text w))
+                         12 (user-text-color w))
+                        (rectangle 2 17 'solid (user-text-color w)))
+                (rectangle 580 30 'solid 'white)))
+              (square 600 'solid 'gold))]))
 
 ;; first-n : list, int --> list
 ;; returns up to the first int elements in a given list
 (define (first-n l i)
   (cond
     [(or (empty? l) (= i 0)) empty]
-    [else (cons
-           (first l)
-           (first-n (rest l) (- i 1)))]))
+    [else (cons (first l) (first-n (rest l) (- i 1)))]))
 
 ;; render-requests : list-of-requests --> image
 ;; renders list-of-requests as an image
@@ -331,18 +366,22 @@
     [(empty? l) (square 0 'solid 'pink)]
     [else
      (above
-      (overlay/align "left" "middle"
-                     (pestertext (string-append " " (first (first l))) 12 'white)
-                     (overlay/align "right" "middle"
-                                    (beside (overlay (pestertext "✓" 25 'black)
-                                                     (rectangle 50 20 'solid 'green))
-                                            (rectangle 10 0 'solid 'pink)
-                                            (overlay (pestertext "X" 20 'black)
-                                                     (rectangle 50 20 'solid 'red))
-                                            (rectangle 10 0 'solid 'red))
-                                    (overlay/align "middle" "top"
-                                                   (rectangle 580 28 'solid 'black)
-                                                   (rectangle 580 30 'solid 'gray))))
+      (overlay/align
+       "left" "middle"
+       (pestertext (string-append " " (first (first l))) 12 'white)
+       (overlay/align "right" "middle"
+                      (beside
+                       (overlay
+                        (pestertext "✓" 25 'black)
+                        (rectangle 50 20 'solid 'green))
+                       (rectangle 10 0 'solid 'pink)
+                       (overlay
+                        (pestertext "X" 20 'black)
+                        (rectangle 50 20 'solid 'red))
+                       (rectangle 10 0 'solid 'red))
+                      (overlay/align "middle" "top"
+                                     (rectangle 580 28 'solid 'black)
+                                     (rectangle 580 30 'solid 'gray))))
       (render-requests (rest l)))]))
 
 ;; render-pesters : list-of-pesters --> image
@@ -351,12 +390,13 @@
   (cond
     [(empty? l) (square 0 'solid 'pink)]
     [else (above
-           (overlay/align "left" "middle"
-                          (pestertext (string-append
-                                       " " (get-initials (first (first l)))
-                                       ": " (first (fourth (first l))))
-                                      12 (second (fourth (first l))))
-                          (rectangle 580 20 'solid 'white))
+           (overlay/align
+            "left" "middle"
+            (pestertext (string-append
+                         " " (get-initials (first (first l)))
+                         ": " (first (fourth (first l))))
+                        12 (second (fourth (first l))))
+            (rectangle 580 20 'solid 'white))
            (render-pesters (rest l)))]))
 
 ;; get-initials : string --> string
@@ -393,7 +433,9 @@
              (rectangle 0 5 'solid 'pink)
              (above (overlay/align
                      "middle" "top"
-                     (render-friends (get-group (user-friends w) (user-viewing w)) (user-tab w))
+                     (render-friends (get-group (user-friends w)
+                                                (user-viewing w))
+                                     (user-tab w))
                      (rectangle 300 300 'solid 'black))
                     (rectangle 0 7 'solid 'pink)
                     (beside
@@ -434,7 +476,8 @@
    (rectangle 315 600 'solid 'gold)))
 
 ;; render-friends : LOSS&B string --> image
-;; renders friends list (LOSS&B) as image for sidebar and highlights friend as specified by tab if necessary
+;; renders friends list (LOSS&B) as image for sidebar
+;; highlights friend as specified by tab if necessary
 (define (render-friends l t)
   (cond
     [(empty? l) (square 0 'solid 'pink)]
@@ -453,12 +496,14 @@
                  [(eq? (second (first l)) 'r) RANCOROROUSMARKER]
                  [else (error 'unexpected_friend_status)])
                (rectangle 5 0 'solid 'pink)
-               (pestertext (first (first l)) 14 (if (eq? (second (first l)) 'o) 'gray 'white)))
-       (overlay/align "right" "middle"
-                      (beside (if (third (first l)) NEWMESSAGEMARKER
-                                  (square 0 'solid 'pink)) (rectangle 5 0 'solid 'pink))
-                      (if (eq? (first (first l)) t) (rectangle 300 25 'solid (make-color 80 80 80))
-                          (rectangle 300 25 'solid 'black))))
+               (pestertext (first (first l)) 14
+                           (if (eq? (second (first l)) 'o) 'gray 'white)))
+       (overlay/align
+        "right" "middle"
+        (beside (if (third (first l)) NEWMESSAGEMARKER
+                    (square 0 'solid 'pink)) (rectangle 5 0 'solid 'pink))
+        (if (eq? (first (first l)) t) (rectangle 300 25 'solid (make-color 80 80 80))
+            (rectangle 300 25 'solid 'black))))
       (render-friends (rest l) t))]))
 
 ;; get-group : list int --> list
@@ -487,31 +532,46 @@
   (cond
     [(symbol=? s 'c)
      (above
-      (beside (overlay HIGHLIGHT CHUMMY)
-              (rectangle 10 0 'solid' pink)
-              BULLY
-              (rectangle 10 0 'solid 'pink)
-              PALSY)
+      (beside (overlay HIGHLIGHT CHUMMY) (rectangle 10 0 'solid' pink)
+              BULLY (rectangle 10 0 'solid 'pink) PALSY)
       (rectangle 0 10 'solid 'pink)
-      (beside PEPPY (rectangle 10 0 'solid 'pink) CHIPPER (rectangle 10 0 'solid' pink) RANCOROUS))]
-    [(symbol=? s 'b) (above (beside CHUMMY (rectangle 10 0 'solid' pink) (overlay HIGHLIGHT BULLY) (rectangle 10 0 'solid 'pink) PALSY)
-                            (rectangle 0 10 'solid 'pink)
-                            (beside PEPPY (rectangle 10 0 'solid 'pink) CHIPPER (rectangle 10 0 'solid' pink) RANCOROUS))]
-    [(symbol=? s 'p) (above (beside CHUMMY (rectangle 10 0 'solid' pink) BULLY (rectangle 10 0 'solid 'pink) (overlay HIGHLIGHT PALSY))
-                            (rectangle 0 10 'solid 'pink)
-                            (beside PEPPY (rectangle 10 0 'solid 'pink) CHIPPER (rectangle 10 0 'solid' pink) RANCOROUS))]
-    [(symbol=? s 'pe) (above (beside CHUMMY (rectangle 10 0 'solid' pink) BULLY (rectangle 10 0 'solid 'pink) PALSY)
-                             (rectangle 0 10 'solid 'pink)
-                             (beside (overlay HIGHLIGHT PEPPY) (rectangle 10 0 'solid 'pink) CHIPPER (rectangle 10 0 'solid' pink) RANCOROUS))]
-    [(symbol=? s 'ch) (above (beside CHUMMY (rectangle 10 0 'solid' pink) BULLY (rectangle 10 0 'solid 'pink) PALSY)
-                             (rectangle 0 10 'solid 'pink)
-                             (beside PEPPY (rectangle 10 0 'solid 'pink) (overlay HIGHLIGHT CHIPPER) (rectangle 10 0 'solid' pink) RANCOROUS))]
-    [(symbol=? s 'r) (above (beside CHUMMY (rectangle 10 0 'solid' pink) BULLY (rectangle 10 0 'solid 'pink) PALSY)
-                            (rectangle 0 10 'solid 'pink)
-                            (beside PEPPY (rectangle 10 0 'solid 'pink) CHIPPER (rectangle 10 0 'solid' pink) (overlay HIGHLIGHT RANCOROUS)))]
-    [else  (above (beside CHUMMY (rectangle 10 0 'solid' pink) BULLY (rectangle 10 0 'solid 'pink) PALSY)
-                  (rectangle 0 10 'solid 'pink)
-                  (beside PEPPY (rectangle 10 0 'solid 'pink) CHIPPER (rectangle 10 0 'solid' pink) RANCOROUS))]))
+      (beside PEPPY (rectangle 10 0 'solid 'pink) CHIPPER
+              (rectangle 10 0 'solid' pink) RANCOROUS))]
+    [(symbol=? s 'b)
+     (above (beside CHUMMY (rectangle 10 0 'solid' pink)
+                    (overlay HIGHLIGHT BULLY) (rectangle 10 0 'solid 'pink) PALSY)
+            (rectangle 0 10 'solid 'pink)
+            (beside PEPPY (rectangle 10 0 'solid 'pink)
+                    CHIPPER (rectangle 10 0 'solid' pink) RANCOROUS))]
+    [(symbol=? s 'p)
+     (above (beside CHUMMY (rectangle 10 0 'solid' pink) BULLY
+                    (rectangle 10 0 'solid 'pink) (overlay HIGHLIGHT PALSY))
+            (rectangle 0 10 'solid 'pink)
+            (beside PEPPY (rectangle 10 0 'solid 'pink) CHIPPER
+                    (rectangle 10 0 'solid' pink) RANCOROUS))]
+    [(symbol=? s 'pe)
+     (above (beside CHUMMY (rectangle 10 0 'solid' pink)
+                    BULLY (rectangle 10 0 'solid 'pink) PALSY)
+            (rectangle 0 10 'solid 'pink)
+            (beside (overlay HIGHLIGHT PEPPY) (rectangle 10 0 'solid 'pink)
+                    CHIPPER (rectangle 10 0 'solid' pink) RANCOROUS))]
+    [(symbol=? s 'ch)
+     (above (beside CHUMMY (rectangle 10 0 'solid' pink) BULLY
+                    (rectangle 10 0 'solid 'pink) PALSY)
+            (rectangle 0 10 'solid 'pink)
+            (beside PEPPY (rectangle 10 0 'solid 'pink) (overlay HIGHLIGHT CHIPPER)
+                    (rectangle 10 0 'solid' pink) RANCOROUS))]
+    [(symbol=? s 'r)
+     (above (beside CHUMMY (rectangle 10 0 'solid' pink) BULLY
+                    (rectangle 10 0 'solid 'pink) PALSY)
+            (rectangle 0 10 'solid 'pink)
+            (beside PEPPY (rectangle 10 0 'solid 'pink) CHIPPER
+                    (rectangle 10 0 'solid' pink) (overlay HIGHLIGHT RANCOROUS)))]
+    [else (above (beside CHUMMY (rectangle 10 0 'solid' pink) BULLY
+                         (rectangle 10 0 'solid 'pink) PALSY)
+                 (rectangle 0 10 'solid 'pink)
+                 (beside PEPPY (rectangle 10 0 'solid 'pink) CHIPPER
+                         (rectangle 10 0 'solid' pink) RANCOROUS))]))
 
 ;; -----------------------------------------------------------------------------------------
 ;; Handle-Key
@@ -521,47 +581,57 @@
 ;; handles key input and updates the world if necessary
 (define (handle-key w k)
   (cond
-    [(or (key=? k "shift") (key=? k "start") (key=? k "cancel") (key=? k "clear")
-         (key=? k "menu") (key=? k "pause") (key=? k "capital") (key=? k "prior")
-         (key=? k "next") (key=? k "end") (key=? k "home") (key=? k "select")
-         (key=? k "print") (key=? k "execute") (key=? k "snapshot") (key=? k "insert")
-         (key=? k "help") (key=? k "f1") (key=? k "f2") (key=? k "f3")
-         (key=? k "f4") (key=? k "f5") (key=? k "f6") (key=? k "f7") (key=? k "f8")
-         (key=? k "f9") (key=? k "f10") (key=? k "f11") (key=? k "f12")
-         (key=? k "numlock") (key=? k "scroll") (key=? k "wheel-left") (key=? k "wheel-right")
-         (key=? k "control") (key=? k "rcontrol") (key=? k "rshift") (key=? k "\t")) w]
+    [(or (key=? k "shift") (key=? k "start") (key=? k "cancel")
+         (key=? k "clear") (key=? k "menu") (key=? k "pause")
+         (key=? k "capital") (key=? k "prior") (key=? k "next")
+         (key=? k "end") (key=? k "home") (key=? k "select")
+         (key=? k "print") (key=? k "execute") (key=? k "snapshot")
+         (key=? k "insert") (key=? k "help") (key=? k "f1")
+         (key=? k "f2") (key=? k "f3") (key=? k "f4") (key=? k "f5")
+         (key=? k "f6") (key=? k "f7") (key=? k "f8") (key=? k "f9")
+         (key=? k "f10") (key=? k "f11") (key=? k "f12")
+         (key=? k "numlock") (key=? k "scroll") (key=? k "wheel-left")
+         (key=? k "wheel-right") (key=? k "control") (key=? k "rcontrol")
+         (key=? k "rshift") (key=? k "\t")) w]
     [(user? w)
      (cond
        [(key=? k "escape") w]
-       [(or (key=? k "left") (key=? k "right") (key=? k "up") (key=? k "down") 
+       [(or (key=? k "left") (key=? k "right")
+            (key=? k "up") (key=? k "down") 
             (key=? k "wheel-up") (key=? k "wheel-down"))
         (make-user (user-username w) (user-status w) (user-text-color w) (user-friends w)
                    (update-viewing (user-viewing w) (length (user-friends w)))
                    (user-pesters w) (user-requests w) (user-tab w) (user-text w))]
-       [(key=? k "\b") (make-user (user-username w) (user-status w) (user-text-color w) (user-friends w)
-                                  (user-viewing w) (user-pesters w) (user-requests w) (user-tab w)
-                                  (if (string=? (user-text w) "")
-                                      "" (substring (user-text w) 0 (- (string-length (user-text w)) 1))))]
+       [(key=? k "\b")
+        (make-user (user-username w) (user-status w) (user-text-color w) (user-friends w)
+                   (user-viewing w) (user-pesters w) (user-requests w) (user-tab w)
+                   (if (string=? (user-text w) "")
+                       "" (substring (user-text w) 0 (- (string-length (user-text w)) 1))))]
        [(key=? k "\r")
         (cond
-          [(eq? (user-tab w) "none") w]
+          [(or (string=? (user-text w) "") (eq? (user-tab w) "none")) w]
           [(eq? (user-tab w) "requests")
            (make-package
             (make-user (user-username w) (user-status w) (user-text-color w) (user-friends w)
                        (user-viewing w) (user-pesters w) (user-requests w) (user-tab w) "")
-            '((user-username w) (user-text w) "request" empty))]
-          [else (make-package (make-user (user-username w) (user-status w) (user-text-color w) (user-friends w)
-                                         (user-viewing w)
-                                         (if (>= (length (filter (lambda (x) (or (eq? (second x) (user-tab w)) (eq? (first x) (user-tab w)))) (user-pesters w))) MAXPESTERS)
-                                             (cons '((user-username w) (user-tab w) "pester" '((user-text w) (user-text-color w)))
-                                                   (append
-                                                    (reverse (rest (reverse (filter (lambda (x) (or (eq? (second x) (user-tab w)) (eq? (first x) (user-tab w)))) (user-pesters w)))))
-                                                    (filter (lambda (x) (or (eq? (second x) (user-tab w)) (eq? (first x) (user-tab w)))) (user-pesters w))))
-                                             (cons '((user-username w) (user-tab w) "pester" '((user-text w) (user-text-color w))) (user-pesters w)))
-                                         (user-requests w) (user-tab w) "")
-                              '((user-username w) (user-tab w) "pester" '((user-text w) (user-text-color w))))])]
-       [else (if (or (>= (image-width (pestertext (string-append " " (user-text w)) 12 'white)) 575)
-                     (and (eq? (user-tab w) "requests") (>= (image-width (pestertext (string-append " " (user-text w)) 12 'white)) 415))
+            (list (user-username w) (user-text w) "request" empty))]
+          [else
+           (make-package
+            (make-user (user-username w) (user-status w) (user-text-color w)
+                       (user-friends w) (user-viewing w)
+                       (if (>= (length (filter (lambda (x)
+                                                 (or (eq? (second x) (user-tab w))
+                                                     (eq? (first x) (user-tab w))))
+                                               (user-pesters w))) MAXPESTERS)
+                           (cons
+                            (list (user-username w) (user-tab w) "pester" (list (user-text w) (user-text-color w)))
+                            (append (reverse (rest (reverse (filter (lambda (x) (or (eq? (second x) (user-tab w)) (eq? (first x) (user-tab w)))) (user-pesters w)))))
+                                    (filter (lambda (x) (not (or (eq? (second x) (user-tab w)) (eq? (first x) (user-tab w))))) (user-pesters w))))
+                           (cons (list (user-username w) (user-tab w) "pester" (list (user-text w) (user-text-color w))) (user-pesters w)))
+                       (user-requests w) (user-tab w) "")
+            (list (user-username w) (user-tab w) "pester" (list (user-text w) (user-text-color w))))])]
+       [else (if (or (>= (image-width (pestertext (string-append "  " (user-text w)) 12 'white)) 575)
+                     (and (eq? (user-tab w) "requests") (>= (image-width (pestertext (string-append "  " (user-text w)) 12 'white)) 415))
                      (eq? (user-tab w) "none"))
                  w (make-user (user-username w) (user-status w) (user-text-color w) (user-friends w)
                               (user-viewing w) (user-pesters w) (user-requests w) (user-tab w) (string-append (user-text w) k)))])]
@@ -574,33 +644,30 @@
                          (if (eq? (user-login-editing w) 1) 2 1))]
        [(key=? k "escape") (make-user-create "" "black" "" "" 1)]
        [(key=? k "\r") (make-package (make-user-login "" "" 1)
-                                     '((user-login-username w) "server" "login" (user-login-password w)))]
+                                     (list (user-login-username w)
+                                           "server" "login" (user-login-password w)))]
        [(key=? k "\b") (if (eq? (user-login-editing w) 2)
                            (make-user-login (user-login-username w)
                                             (if (string=? (user-login-password w) "")
-                                                "" (substring (user-login-password w) 0 (- (string-length (user-login-password w)) 1)))
-                                            2)
+                                                "" (substring (user-login-password w) 0 (- (string-length (user-login-password w)) 1))) 2)
                            (make-user-login (if (string=? (user-login-username w) "")
                                                 "" (substring (user-login-username w) 0 (- (string-length (user-login-username w)) 1)))
                                             (user-login-password w) 1))]
        [else (cond
-               [(or (> (image-width (pestertext (user-login-username w) 14 'white)) 346)
-                    (> (image-width (pestertext (user-login-password w) 14 'white)) 346)) w]
-               [(eq? (user-login-editing w) 1)
+               [(and (eq? (user-login-editing w) 1) (not (> (image-width (pestertext (string-append "  " (user-login-username w)) 14 'white)) 346)))
                 (make-user-login (string-append (user-login-username w) k) (user-login-password w) 1)]
-               [(eq? (user-login-editing w) 2)
+               [(and (eq? (user-login-editing w) 2) (not (> (image-width (pestertext (string-append "  " (user-login-password w)) 14 'white)) 346)))
                 (make-user-login (user-login-username w) (string-append (user-login-password w) k) 2)]
                [else w])])]
     [(user-create? w)
      (cond
        [(or (key=? k "up") (key=? k "down") (key=? k "left") (key=? k "right")
-            (key=? k "wheel-up") (key=? k "wheel-down"))
+            (key=? k "wheel-up") (key=? k "wheel-down") (key=? k "escape"))
         (make-user-create (user-create-username w) (user-create-text-color w)
                           (user-create-password1 w) (user-create-password2 w)
                           (if (or (eq? (user-create-editing w) 4)
                                   (eq? (user-create-editing w) 0))
                               1 (+ (user-create-editing w) 1)))]
-       [(key=? k "escape") (make-user-login "" "" 0)]
        [(key=? k "\b")
         (cond
           [(eq? (user-create-editing w) 1)
@@ -626,23 +693,27 @@
                                 (>= (string-length (user-create-username w)) 2)
                                 (>= (string-length (user-create-password1 w)) 2))
                            (make-package (make-user-login "" "" 1)
-                                         '((user-create-username w) "server" "new-user" '((user-create-text-color w) (user-create-password1 w))))
+                                         (list (user-create-username w) "server" "new-user" (list (user-create-text-color w) (user-create-password1 w))))
                            (make-user-create (user-create-username w) (user-create-text-color w) "" "" 3))]
        [else (cond
-               [(or (> (image-width (pestertext (user-create-username w) 14 'white)) 346)
-                    (> (image-width (pestertext (user-create-text-color w) 14 'white)) 346)
-                    (> (image-width (pestertext (user-create-password1 w) 14 'white)) 346)
-                    (> (image-width (pestertext (user-create-password2 w) 14 'white)) 46)) w]
-               [(eq? (user-create-editing w) 1)
+               [(and (not (> (image-width (pestertext (string-append "  " (user-create-username w))
+                                                      14 'white)) 346))
+                     (eq? (user-create-editing w) 1))
                 (make-user-create (string-append (user-create-username w) k) (user-create-text-color w)
                                   (user-create-password1 w) (user-create-password2 w) (user-create-editing w))]
-               [(eq? (user-create-editing w) 2)
+               [(and (not (> (image-width (pestertext (string-append "  " (user-create-text-color w))
+                                                      14 'white)) 346))
+                     (eq? (user-create-editing w) 2))
                 (make-user-create (user-create-username w) (string-append (user-create-text-color w) k)
                                   (user-create-password1 w) (user-create-password2 w) (user-create-editing w))]
-               [(eq? (user-create-editing w) 3)
+               [(and (not (> (image-width (pestertext (string-append "  " (user-create-password1 w))
+                                                      14 'white)) 346))
+                     (eq? (user-create-editing w) 3))
                 (make-user-create (user-create-username w) (user-create-text-color w)
                                   (string-append (user-create-password1 w) k) (user-create-password2 w) (user-create-editing w))]
-               [(eq? (user-create-editing w) 4)
+               [(and (not (> (image-width (pestertext (string-append "  " (user-create-password2 w))
+                                                      14 'white)) 346))
+                     (eq? (user-create-editing w) 4))
                 (make-user-create (user-create-username w) (user-create-text-color w)
                                   (user-create-password1 w) (string-append (user-create-password2 w) k) (user-create-editing w))]
                [else w])])]
@@ -666,7 +737,7 @@
                 (user-status w)
                 (user-text-color w)
                 (if (not (eq? (user-tab w) (first m)))
-                    (sort-new-messages (user-friends w) '(m))
+                    (sort-new-messages (user-friends w) (list m))
                     (user-friends w))
                 (user-viewing w)
                 (if (>= (length (filter (lambda (x) (or (eq? (second x) (first m)) (eq? (first x) (first m)))) (user-pesters w))) MAXPESTERS)
@@ -746,7 +817,7 @@
                          (user-login-password w)
                          1)]
        ;; select password field
-       [(and (> y 270) (> y 330))
+       [(and (> y 270) (< y 330))
         (make-user-login (user-login-username w)
                          (user-login-password w)
                          2)]
@@ -757,7 +828,7 @@
             (if (and (> x 490) (< x 640))
                 (make-package
                  (make-user-login "" "" 0)
-                 '((user-login-username w) "server" "login" (user-login-password w)))
+                 (list (user-login-username w) "server" "login" (user-login-password w)))
                 w))]
        [else w])]
     [(user-create? w)
@@ -781,7 +852,7 @@
             (if (and (> x 490) (< x 640))
                 (make-package
                  (make-user-login "" "" 0)
-                 '((user-create-username w) "server" "new-user" '((user-create-text-color w) (user-create-password1 w))))
+                 (list (user-create-username w) "server" "new-user" (list (user-create-text-color w) (user-create-password1 w))))
                 w))]
        [else w])]  
     [else (error 'unexpected_worldstate!)]))
@@ -818,33 +889,37 @@
              (make-user (user-username w) (user-status w) (user-text-color w)
                         (user-friends w) (user-viewing w) (user-pesters w)
                         (user-requests w) "none" "")
-             '((user-create-username w) "server" "block" (user-tab w))))]
+             (list (user-username w) "server" "block" (user-tab w))))]
        ;; pester button
        [else
-        (if (or (eq? (user-tab w) "requests") (eq? (user-tab "none")))
+        (if (or (string=? (user-text w) "") (eq? (user-tab w) "requests") (eq? (user-tab w) "none"))
             w
-            (make-package (make-user (user-username w) (user-status w) (user-text-color w) (user-friends w)
-                                     (user-viewing w)
-                                     (if (>= (length (filter (lambda (x) (or (eq? (second x) (user-tab w)) (eq? (first x) (user-tab w)))) (user-pesters w))) MAXPESTERS)
-                                         (cons '((user-username w) (user-tab w) "pester" '((user-text w) (user-text-color w)))
-                                               (append
-                                                (reverse (rest (reverse (filter (lambda (x) (or (eq? (second x) (user-tab w)) (eq? (first x) (user-tab w)))) (user-pesters w)))))
-                                                (filter (lambda (x) (or (eq? (second x) (user-tab w)) (eq? (first x) (user-tab w)))) (user-pesters w))))
-                                         (cons '((user-username w) (user-tab w) "pester" '((user-text w) (user-text-color w))) (user-pesters w)))
-                                     (user-requests w) (user-tab w) "")
-                          '((user-username w) (user-tab w) "pester" '((user-text w) (user-text-color w)))))])]
+            (make-package
+             (make-user (user-username w) (user-status w) (user-text-color w)
+                        (user-friends w) (user-viewing w)
+                        (if (>= (length (filter (lambda (x)
+                                                  (or (eq? (second x) (user-tab w))
+                                                      (eq? (first x) (user-tab w))))
+                                                (user-pesters w))) MAXPESTERS)
+                            (cons
+                             (list (user-username w) (user-tab w) "pester" (list (user-text w) (user-text-color w)))
+                             (append (reverse (rest (reverse (filter (lambda (x) (or (eq? (second x) (user-tab w)) (eq? (first x) (user-tab w)))) (user-pesters w)))))
+                                     (filter (lambda (x) (not (or (eq? (second x) (user-tab w)) (eq? (first x) (user-tab w))))) (user-pesters w))))
+                            (cons (list (user-username w) (user-tab w) "pester" (list (user-text w) (user-text-color w))) (user-pesters w)))
+                        (user-requests w) (user-tab w) "")
+             (list (user-username w) (user-tab w) "pester" (list (user-text w) (user-text-color w)))))])]
     ;; send request button
-    [(and (> x 760) (> y 560) (eq? (user-tab w) "requests"))
+    [(and (> x 760) (> y 560) (eq? (user-tab w) "requests") (not (string=? (user-text w) "")))
      (make-package
       (make-user (user-username w) (user-status w) (user-text-color w) (user-friends w)
                  (user-viewing w) (user-pesters w) (user-requests w) (user-tab w) "")
-      '((user-username w) (user-text w) "request" empty))]
+      (list (user-username w) (user-text w) "request" empty))]
     ;; accept & decline requests
     [(and (eq? (user-tab w) "requests") (> x 795) (< x 905) (> y 10) (< y 550))
      (local
        [(define (request-action x y l)
           (cond
-            [(empty? l) '(false "none")]
+            [(empty? l) (list false "none")]
             [else (if (>= y 30)
                       (request-action x (- y 30) (rest l))
                       (list (if (< x 850) true false) (first (first l))))]))]
@@ -856,21 +931,29 @@
                       (user-friends w) (user-viewing w) (user-pesters w)
                       (filter (lambda (z) (not (eq? (first z) (second (request-action x (- y 10) (user-requests w))))))
                               (user-requests w)) (user-tab w) (user-text w))
-           '((user-username w) "server" "request-accept" (second (request-action x (- y 10) (user-requests w)))))]
+           (list (user-username w) "server" "request-accept" (second (request-action x (- y 10) (user-requests w)))))]
          [else (make-user (user-username w) (user-status w) (user-text-color w) (user-friends w) (user-viewing w) (user-pesters w)
                           (filter (lambda (z) (not (eq? (first z) (second (request-action x (- y 10) (user-requests w))))))
                                   (user-requests w)) (user-tab w) (user-text w))]))]
     ;; select friend from friendlist
-    [(and (> x 10) (< x 310) (> y 77) (< y 378))
+    [(and (> x 10) (< x 310) (> y 76) (< y 378))
      (local
        [(define (select-friend i l)
           (cond
             [(empty? l) "none"]
-            [else (if (>= 25 i)
-                      (select-friend (- i 25) (rest l))
-                      (first (first l)))]))]
+            [else (if (< i 25)
+                      (first (first l))
+                      (select-friend (- i 25) (rest l)))]))]
        (make-user (user-username w) (user-status w) (user-text-color w)
-                  (user-friends w) (user-viewing w) (user-pesters w)
+                  (map (lambda (f)
+                         (if (string=? (first f)
+                                       (select-friend (- y 78)
+                                                      (get-group
+                                                       (user-friends w)
+                                                       (user-viewing w))))
+                             (list (first f) (second f) false)
+                             f)) (user-friends w))
+                  (user-viewing w) (user-pesters w)
                   (user-requests w) (select-friend
                                      (- y 78)
                                      (get-group (user-friends w) (user-viewing w)))
@@ -878,8 +961,8 @@
     ;; cycle friends
     [(and (> (length (user-friends w)) VIEWINT) (> y 50) (< x 78) (> x 270) (< x 310))
      (make-user (user-username w) (user-status w) (user-text-color w) (user-friends w)
-                   (update-viewing (user-viewing w) (length (user-friends w)))
-                   (user-pesters w) (user-requests w) (user-tab w) (user-text w))]
+                (update-viewing (user-viewing w) (length (user-friends w)))
+                (user-pesters w) (user-requests w) (user-tab w) (user-text w))]
     [else w]))
 
 
@@ -933,3 +1016,5 @@
             [to-draw render]
             [on-key handle-key]
             [on-mouse handle-mouse]))
+
+(main STARTING-WORLD)
