@@ -1,161 +1,281 @@
-;; The first three lines of this file were inserted by DrRacket. They record metadata
-;; about the language level of this file in a form that our tools can easily process.
-#reader(lib "htdp-intermediate-lambda-reader.ss" "lang")((modname server) (read-case-sensitive #t) (teachpacks ()) (htdp-settings #(#t constructor repeating-decimal #f #t none #f () #f)))
 #lang racket
 (require 2htdp/batch-io)
 (require 2htdp/universe)
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Definitions
+;; password w/ invalid characters should not be accepted for create-user
 
-;; a universe is a (make-universe list-of-iworlds list-of-strings)
-(define-struct u (l l2))
-(define DEFAULT (make-u empty empty))
+;; -----------------------------------------------------------------------------------------
+;; DEFINITIONS
+;; -----------------------------------------------------------------------------------------
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; main functions
+;; a universe is a list-of-universe-lists
+(define DEFAULT empty)
 
-;; handle-new : universe, iworld --> bundle
-;; takes a universe-state, and an iworld that has just joined and outputs a bundle containing
-;; mail to every iworld to the effect that (iworld-name iworld) has joined the chat
-(define (handle-new u i)
-  (make-u (cons i (u-l u)) (u-l2 u)))
+;; a universe-list is one of:
+;; - '(iworld)
+;; - '(iworld username status)
 
-;; handle-msg : universe, iworld, sexp --> bundle
-(define (handle-msg u i s)
-  (if
-   (and (cons? s) (symbol? (first s)))
-   (make-u (u-l u) (if (unique? s (u-l2 u)) (cons s (u-l2 u)) (reverse (update s (u-l2 u) empty))))
-   (make-bundle u (send-to-recipients (u-l u) i s) empty)))
+;; a message is a '(string string string content) where:
+;; the first string is the username of the sender of the message
+;; the second string is one of:
+;;   - the username of the recipient of the message
+;;   - "server" if the message is intended not to be sent to anyone else
+;; the third string denotes the purpouse of the message and is one of:
+;;  - "login"          : the user attempts to login (server only)
+;;  - "login-data"     : data sent to user after attempted login
+;;  - "new-user"       : creates a new user (server only)
+;;  - "pester"         : a text message intended for another user
+;;  - "request"        : a friend request from one user to another
+;;  - "request-accept" : user excepts friend request (server-only)
+;;  - "friends"        : list of users online and their status'
+;;  - "block"          : user blocks other user (server only)
+;;  - "login-fail"     : failed login attempt
+;;  - "create-fail"    : failed to create user
+;;  - "change-status"  : user changes status
+;; content is an is the contence of a message which is:
+;;  - for login content will be password
+;;  - for login-data content will be '(text-color friends pesters requests)
+;;  - for new-user content will be '(text-color password)
+;;  - for pester content will be '(string text-color)
+;;  - for request the content will be empty
+;;  - for request-accept the content will be friends-username
+;;  - for friends the content will be 'a list of '(username status online?)
+;;  - for block content is the username of the friend user wants to block
+;;  - for login-fail content is empty
+;;  - for create-fail content is empty
+;;  - for change status content is a symbol that is the user's status
 
-;; update: list, list, list --> list
-(define (update l l2 l3)
-  (cond
-    [(empty? l2) l3]
-    [(cons? l2)
-     (if (symbol=? (first l) (first (first l2)))
-         (update l (rest l2) (cons l l3))
-         (update l (rest l2) (cons (first l2) l3)))]))
+;; a user-data is a list of strings that is:
+;; - '(username text-color password-block friends)
 
-;; tock: universe --> bundle
-;; sends out a list of current iworld names to every connected iworld
-(define (tock u) (make-bundle u (send-to-all (u-l u) (u-l2 u)) empty))
+;; a list-of-friends is a list of
+;; - (list username, status, new-messages?)
 
+;; All the characters
+(define VALID-CHARACTERS
+  (list "`" "G" "#" "w" "}" ":" "f" "b" "V" "?" "Y" "l" "6" "P"
+        "O" "*" "x" "e" "T" "2" "H" "/" "X" "W" "&" "g" "{" ")"
+        "u" "n" "M" "E" "A" " " "B" "$" "R" "[" "~" ";" "0" "!"
+        "N" "C" "D" "I" "." "F" "(" "K" "@" "Q" "=" "j" "o" "%"
+        "λ" "a" "]" "r" "h" "_" "m" "p" "z" "c" "4" "i" "t" "v"
+        "9" "+" "5" "L" "y" "U" "q" "S" "-" "Z" "8" "^" "," "k"
+        "d" "3" "'" "7" "J" "1" "s"))
+
+;; -----------------------------------------------------------------------------------------
+;; handle-new
+;; -----------------------------------------------------------------------------------------
+
+;; handle-new : universe, iworld --> universe
+;; adds iworld to universe when new user starts program
+(define (handle-new u w) (cons u (list w)))
+
+;; -----------------------------------------------------------------------------------------
 ;; disconnect
-(define (disconnect u i)
-  (make-u (remove-iworld (u-l u) i) empty))
+;; -----------------------------------------------------------------------------------------
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; disconnect : universe- , iworld --> universe
+;; removes iworld from universe when user logs out
+(define (disconnect u i) (filter (lambda (l) (not (iworld=? (first l) i))) u))
 
-;; send-to-all : loiw sexp --> lom
-;; makes a lom w/ message sexp adressed to all iworlds in loiw
-(define (send-to-all l s)
+;; -----------------------------------------------------------------------------------------
+;; handle-msg
+;; -----------------------------------------------------------------------------------------
+
+;; handle-msg : universe, iworld, message --> universe
+;; takes a universe, the iworld that sent a message, and that message and updates universe
+(define (handle-msg u i m)
+  (cond
+    ;; login
+    [(eq? (third m) "login")
+     (cond
+       [(or (unique-username? (first m)) (not (password-success? (get-user-data (first m)) (fourth m))))
+        (make-bundle u (list (make-mail i (list "server" "" "login-fail" empty))) empty)]
+       [else (make-bundle (log-user-in u i (first m)) (list (make-mail i (make-login-data (first m) u))) empty)
+             (remove-pending-messages (first m))])]
+    ;; new-user
+    [(eq? (third m) "new-user")
+     (if (not (unique-username? (first m)))
+         (make-bundle u (list (make-mail i (list "server" "" "create-fail" empty))) empty)
+         (add-new-user-data (first m) (first (fourth m)) (second (fourth m))))]))
+
+;; unique-username? : string --> bool
+;; true iff username not found in user_data file
+(define (unique-username? s)
+  (local
+    [(define (string-at-begining-of-lists? l)
+       (cond
+         [(empty? l) false]
+         [else (or (eq? s (first (first l))) (string-at-begining-of-lists? (rest l)))]))]
+    (string-at-begining-of-lists? (read-words/line "user_data.txt"))))
+
+;; password-sucess? : user-data, string --> bool
+;; true iff string decripts user-data passwordblock
+(define (password-success? d p)
+  (string=? (decrypt (substring (third d) 0 (string-length p)) p) p))
+
+;; get-user-data : username --> user-data
+;; takes username and returns user-data from "user_data" file
+(define (get-user-data s)
+  (local [(define (find-user l)
+            (if (eq? (first (first l)) s)
+                (first l) (find-user (rest l))))]
+    (find-user (read-words/line "user_data.txt"))))
+
+;; make-login-data : username, universe --> message
+;; returns login-data message for given user
+(define (make-login-data s u) 
+  (local
+    [(define DATA (get-user-data s))]
+    (list "server" s "login-data"
+          (list
+           (second DATA)
+           (get-friends (rest (rest (rest DATA))) s u)
+           (if (not (empty? (read-lines "developer_notice")))
+               (get-pesters s)
+               (append (get-pesters s) (dev-notice)))
+           (get-requests s)))))
+
+;; get-friends : list-of-strings, username, universe --> list-of-friends
+;; takes list of friends usernames the users username and the current universe
+;; and outputs updated friend-list
+(define (get-friends l s u)
+  (local
+    [(define (get-friend-status n f)
+       (cond
+         [(empty? f) 'o]
+         [(and (> (length (first f)) 1) (eq? n (second (first f)))) (third (first f))]
+         [else (get-friend-status n (rest f))]))]
+    (cond
+      [(empty? l) empty]
+      [else (cons
+             (list (first l)
+                   (get-friend-status (first l) u)
+                   (> (length (filter (lambda (x) (eq? (first x) (first l)) (get-pesters s)))) 0))
+             (get-friends (rest l) s u))])))
+
+;; get-pesters : string --> list-of-pesters
+;; takes username and returns a list of all pesters sent to that user from pending_messages file
+(define (get-pesters s)
+  (map (lambda (m) (list (first m) (second m) (list (third m) (fourth m))))
+       (filter (lambda (m) (eq? (third m) "pester"))
+               (get-messages (read-lines "pending_messages") s))))
+
+;; get-requests : string --> list-of-requests
+;; takes username and returns a list of all messages sent to that user from pending_messages
+(define (get-requests s)
+  (filter (lambda (m) (eq? (third m) "request"))
+          (get-messages (read-lines "pending_messages") s)))
+
+;; get-messages : list-messages, string --> list-of-messages
+;; gets all messages sent to a given username
+(define (get-messages l s)
   (cond
     [(empty? l) empty]
-    [(cons? l) (cons (make-mail (first l) s) (send-to-all (rest l) s))]))
+    [else (if (eq? (second (first l)) s)
+              (cons (first l) (get-messages (rest l)))
+              (get-messages (rest l)))]))
 
-;; derive-initials : string -> string
-;; outputs the initials (first letter, capital leter) of a given string
-(define (derive-initials s) (string-append (capitalize (first (explode s))) (find-capital (rest (explode s)))))
+;; log-user-in : universe, iworld, username --> universe
+;; updates universe to reflect that a user has logged in
+(define (log-user-in u i s)
+  (if (iworld=? (first (first u)) i)
+      (cons (list i s 'c)
+            (rest u))
+      (cons (first u)
+            (log-user-in (rest u) i s))))
 
-;; capitalize 1string --> 1string 
-;; capitalizes a given letter
-(define (capitalize s)
+;; decrypt : string, string --> string
+;; uses second string to try and decrypt first string
+(define (decrypt s k)
   (cond
-    [(string=? s "a") "A"]
-    [(string=? s "b") "B"]
-    [(string=? s "c") "C"]
-    [(string=? s "d") "D"]
-    [(string=? s "e") "E"]
-    [(string=? s "f") "F"]
-    [(string=? s "g") "G"]
-    [(string=? s "h") "H"]
-    [(string=? s "i") "I"]
-    [(string=? s "j") "J"]
-    [(string=? s "k") "K"]
-    [(string=? s "l") "L"]
-    [(string=? s "m") "M"]
-    [(string=? s "n") "N"]
-    [(string=? s "o") "O"]
-    [(string=? s "p") "P"]
-    [(string=? s "q") "Q"]
-    [(string=? s "r") "R"]
-    [(string=? s "s") "S"]
-    [(string=? s "t") "T"]
-    [(string=? s "u") "U"]
-    [(string=? s "v") "V"]
-    [(string=? s "w") "W"]
-    [(string=? s "x") "X"]
-    [(string=? s "y") "Y"]
-    [(string=? s "z") "Z"]
-    [else s]))
+    [(string=? s "") ""]
+    [else
+     (string-append
+      (list-ref VALID-CHARACTERS
+                (if (> (length (filter (lambda (x) (string=? x (substring k 0 1))) VALID-CHARACTERS)) 0)         
+                    (modulo (- (get-list-ref-number (substring s 0 1) VALID-CHARACTERS 0)
+                               (get-list-ref-number (substring k 0 1) VALID-CHARACTERS 0))
+                            (length VALID-CHARACTERS)) 41))
+      (decrypt (substring s 1) (string-append (substring k 1) (substring k 0 1))))]))
 
-;; find-capital : los -> string
-;; outputs a capital letter in a list of strings
-(define (find-capital l)
+;; encrypt : string, string --> string
+;; uses second string to encrypt first string
+(define (encrypt s k)
   (cond
-    [(empty? l) ""]
-    [(cons? l) (if (or (string=? (first l) "A")
-                       (string=? (first l) "B")
-                       (string=? (first l) "C")
-                       (string=? (first l) "D")
-                       (string=? (first l) "E")
-                       (string=? (first l) "F")
-                       (string=? (first l) "G")
-                       (string=? (first l) "H")
-                       (string=? (first l) "I")
-                       (string=? (first l) "J")
-                       (string=? (first l) "K")
-                       (string=? (first l) "L")
-                       (string=? (first l) "M")
-                       (string=? (first l) "N")
-                       (string=? (first l) "O")
-                       (string=? (first l) "P")
-                       (string=? (first l) "Q")
-                       (string=? (first l) "R")
-                       (string=? (first l) "S")
-                       (string=? (first l) "T")
-                       (string=? (first l) "U")
-                       (string=? (first l) "V")
-                       (string=? (first l) "W")
-                       (string=? (first l) "X")
-                       (string=? (first l) "Y")
-                       (string=? (first l) "Z")
-                       (string=? (first l) "!"))
-                   (first l)
-                   (find-capital (rest l)))]))
+    [(string=? s "") ""]
+    [else
+     (string-append
+      (list-ref VALID-CHARACTERS
+                (if (> (length (filter (lambda (x) (string=? x (substring k 0 1))) VALID-CHARACTERS)) 0)
+                    (modulo (+ (get-list-ref-number (substring s 0 1) VALID-CHARACTERS 0)
+                               (get-list-ref-number (substring k 0 1) VALID-CHARACTERS 0))
+                            (length VALID-CHARACTERS)) 41))
+      (encrypt (substring s 1) (string-append (substring k 1) (substring k 0 1))))]))
 
-;; send-to-recipients: loiw, iworld, sexp
-;; makes list of mail adressed to all in loiw except for the given iworld w/ message s
-(define (send-to-recipients l i s)
+;; get-list-ref-number : character, list, number
+;; returns number + the position of a given string in a list of strings
+(define (get-list-ref-number s l n)
   (cond
-    [(empty? l) empty]
-    [(cons? l)
-     (if (iworld=? i (first l))
-         (send-to-recipients (rest l) i s)
-         (cons (make-mail (first l) s) (send-to-recipients (rest l) i s)))]))
+    [(and (empty? l) (not (empty? s))) false]
+    [(string=? s (first l)) n]
+    [else (get-list-ref-number s (rest l) (+ n 1))]))
 
-;; remove-iworld : list-of-iworlds, iworld --> list-of-iworlds
-;; removes a given iworld from the list
-(define (remove-iworld l i)
-  (cond
-    [(empty? l) l]
-    [(cons? l) (if (iworld=? (first l) i)
-                   (remove-iworld (rest l) i)
-                   (cons (first l) (remove-iworld (rest l) i)))]))
+;; remove-pending-messages : string --> write-file
+;; removes all messages sent to a given username from the pending_messages file
+(define (remove-pending-messages s)
+    (write-file (los->string (filter (lambda (x) (not (eq? (second x) s)))
+                                     (read-lines "pending_messages.txt")))
+                "pending_messages.txt"))
 
-;; unique? list, los --> bool
-(define (unique? s l)
+;; los->string : los --> string
+;; writes list-of-strings as a string w/ line breaks in between lists
+(define (los->string l)
+       (cond
+         [(empty? l) ""]
+         [else (string-append (first l) "\n" (los->string (rest l)))]))
+
+;; add-new-user-data : username, text-color, password --> write-files
+;; adds new-user to user_data file and adds welcome message to pending_messages file
+(define (add-new-user-data s t p)
+  (write-file (string-append (read-file "user_data.txt") "\n"
+                             s " " t " " (encrypt (string-append p (random-string (- 50 (string-length p)))) p))
+              "user_data.txt")
+  (write-file <-------------------------------------------------------------------------------------------------------- TODO HERE!!!!!!!!!!!
+                             
+                            
+
+;; random-string : int --> string
+;; string of random characters int characters long
+(define (random-string i)
   (cond
-    [(empty? l) true]
-    [(cons? l)
-     (and (not (symbol=? (first s) (first (first l))))
-          (unique? s (rest l)))]))
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+    [(< i 1) ""]
+    [else (string-append (list-ref VALID-CHARACTERS
+                                   (random (length VALID-CHARACTERS)))
+                         (random-string (- i 1)))]))
+
+;; dev-notice : list-of-lists-of-strings --> list-of-pesters
+;; takes list of strings and returns list of pesters that is used to display dev notices
+(define (dev-notice)
+  (local
+    [(define (compile-notice l)
+       (cond
+         [(empty? l) empty]
+         [else
+          (cons (list "pesterchumDev" "allUsers"
+                      "pester" (list (first l) "black"))
+                (compile-notice (rest l)))]))]
+    (if (empty? (read-lines "developer_notice.txt"))
+        empty
+        (compile-notice (read-lines "developer_notice.txt")))))
+
+;; -----------------------------------------------------------------------------------------
 ;; Universe
+;; -----------------------------------------------------------------------------------------
+#|
 (universe DEFAULT
           [port 9000]
           [on-new handle-new]
           [on-msg handle-msg]
-          [on-tick tock]
           [on-disconnect disconnect])
+|#
+

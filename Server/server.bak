@@ -1,0 +1,133 @@
+#lang racket
+(require 2htdp/batch-io)
+(require 2htdp/universe)
+
+;; -----------------------------------------------------------------------------------------
+;; DEFINITIONS
+;; -----------------------------------------------------------------------------------------
+
+;; a universe is a list-of-universe-lists
+(define DEFAULT empty)
+
+;; a universe-list is one of:
+;; - '(iworld)
+;; - '(iworld username)
+
+;; a message is a '(string string string content) where:
+;; the first string is the username of the sender of the message
+;; the second string is one of:
+;;   - the username of the recipient of the message
+;;   - "server" if the message is intended not to be sent to anyone else
+;; the third string denotes the purpouse of the message and is one of:
+;;  - "login"          : the user attempts to login (server only)
+;;  - "login-data"     : data sent to user after attempted login
+;;  - "new-user"       : creates a new user (server only)
+;;  - "pester"         : a text message intended for another user
+;;  - "request"        : a friend request from one user to another
+;;  - "request-accept" : user excepts friend request (server-only)
+;;  - "friends"        : list of users online and their status'
+;;  - "block"          : user blocks other user (server only)
+;;  - "login-fail"     : failed login attempt
+;;  - "create-fail"    : failed to create user
+;; content is an is the contence of a message which is:
+;;  - for login content will be password
+;;  - for login-data content will be '(text-color friends pesters requests)
+;;  - for new-user content will be '(text-color password)
+;;  - for pester content will be '(string text-color)
+;;  - for request the content will be empty
+;;  - for request-accept the content will be friends-username
+;;  - for friends the content will be 'a list of '(username status)
+;;  - for block content is the username of the friend user wants to block
+;;  - for login-fail content is empty
+;;  - for create-fail content is empty
+
+;; a user-data is a list of strings that is:
+;; - '(username text-color password-block friends)
+
+;; -----------------------------------------------------------------------------------------
+;; handle-new
+;; -----------------------------------------------------------------------------------------
+
+;; handle-new : universe, iworld --> universe
+;; adds iworld to universe when new user starts program
+(define (handle-new u w) (cons u (list w)))
+
+;; -----------------------------------------------------------------------------------------
+;; disconnect
+;; -----------------------------------------------------------------------------------------
+
+;; disconnect : universe- , iworld --> universe
+;; removes iworld from universe when user logs out
+(define (disconnect u i) (filter (lambda (l) (not (iworld=? (first l) i))) u))
+
+;; -----------------------------------------------------------------------------------------
+;; handle-msg
+;; -----------------------------------------------------------------------------------------
+
+;; handle-msg : universe, iworld, message --> universe
+;; takes a universe, the iworld that sent a message, and that message and updates universe
+(define (handle-msg u i m)
+  (cond
+    ;; login
+    [(eq? (third m) "login")
+     (if (or (unique-username? (first m)) (not (password-success? (get-user-data (first m)) (fourth m))))
+         (make-bundle u (list (make-mail i (list "server" "" "login-fail" empty))) empty)
+         (make-bundle u (list (make-mail i (make-login-data (first m)))) empty))]))
+         
+;; unique-username? : string --> bool
+;; true iff username not found in user_data file
+(define (unique-useranme? s)
+  (local
+    [(define (string-at-begining-of-lists? l)
+       (cond
+         [(empty? l) false]
+         [else (or (eq? s (first l)) (string-at-begining-of-lists (rest l)))]))]
+    (string-at-begining-of-lists (read-lines "user_data.txt"))))
+
+;; password-sucess? : user-data, string --> bool
+;; true iff string decripts user-data passwordblock
+(define (password-success d p)
+  (string=? (decrypt (substring (third d) 0 (string-length p)) p) p))
+
+;; decrypt : string, string --> string
+;; uses second string to try and decrypt first string
+(define (decrypt t p) t) <------------------------------------------------------------------- here
+
+;; encrypt : string, string --> string
+;; uses second string to encrypt first string
+
+
+;;  - "login"          : the user attempts to login (server only)
+;;  - "login-data"     : data sent to user after attempted login
+;;  - "new-user"       : creates a new user (server only)
+;;  - "pester"         : a text message intended for another user
+;;  - "request"        : a friend request from one user to another
+;;  - "request-accept" : user excepts friend request (server-only)
+;;  - "friends"        : list of users online and their status'
+;;  - "block"          : user blocks other user (server only)
+;;  - "login-fail"     : failed login attempt
+;;  - "create-fail"    : failed to create user
+
+
+
+
+;; notice-to-pesters : list-of-lists-of-strings --> list-of-pesters
+(define (notice-to-pesters l)
+  (cond
+    [(empty? l) empty]
+    [else
+     (cons (list "pesterchumDev" "allUsers"
+                 "pester" (list (first l) "black"))
+           (notice-to-pesters (rest l)))]))
+
+;; -----------------------------------------------------------------------------------------
+;; Universe
+;; -----------------------------------------------------------------------------------------
+#|
+(universe DEFAULT
+          [port 9000]
+          [on-new handle-new]
+          [on-msg handle-msg]
+          [on-disconnect disconnect])
+|#
+
