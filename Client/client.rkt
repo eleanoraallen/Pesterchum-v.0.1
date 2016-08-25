@@ -172,6 +172,16 @@
 (define RANCOROROUSMARKER (circle 8 'solid 'red))
 (define NEWMESSAGEMARKER (circle 8 'solid 'blue))
 
+;; All the characters
+(define VALID-CHARACTERS
+  (list "`" "G" "#" "w" "}" ":" "f" "b" "V" "?" "Y" "l" "6" "P"
+        "O" "*" "x" "e" "T" "2" "H" "/" "X" "W" "&" "g" "{" ")"
+        "u" "n" "M" "E" "A" " " "B" "$" "R" "[" "~" ";" "0" "!"
+        "N" "C" "D" "I" "." "F" "(" "K" "@" "Q" "=" "j" "o" "%"
+        "λ" "a" "]" "r" "h" "_" "m" "p" "z" "c" "4" "i" "t" "v"
+        "9" "+" "5" "L" "y" "U" "q" "S" "-" "Z" "8" "^" "," "k"
+        "d" "3" "'" "7" "J" "1" "s"))
+
 ;; -----------------------------------------------------------------------------------------
 ;; Render
 ;; -----------------------------------------------------------------------------------------
@@ -659,6 +669,7 @@
                        (user-requests w) (user-tab w) "")
             (list (user-username w) (user-tab w) "pester"
                   (list (user-text w) (user-text-color w))))])]
+       [(= (length (filter (lambda (x) (string=? x k)) VALID-CHARACTERS)) 0) w]
        [else (if (or (>= (image-width (pestertext (string-append "  " (user-text w)) 12 'white)) 575)
                      (and (eq? (user-tab w) "requests")
                           (>= (image-width (pestertext (string-append "  " (user-text w)) 12 'white)) 415))
@@ -674,7 +685,6 @@
         (make-user-login (user-login-username w)
                          (user-login-password w)
                          (if (eq? (user-login-editing w) 1) 2 1))]
-       [(key=? k "escape") (make-user-create "" "black" "" "" 1)]
        [(key=? k "\r") (make-package (make-user-login "" "" 1)
                                      (list (user-login-username w)
                                            "server" "login" (user-login-password w)))]
@@ -688,6 +698,7 @@
                                  "" (substring (user-login-username w) 0
                                                (- (string-length (user-login-username w)) 1)))
                              (user-login-password w) 1))]
+       [(= (length (filter (lambda (x) (string=? x k)) VALID-CHARACTERS)) 0) w]
        [else (cond
                [(and (eq? (user-login-editing w) 1)
                      (not (> (image-width
@@ -706,7 +717,7 @@
     [(user-create? w)
      (cond
        [(or (key=? k "up") (key=? k "down") (key=? k "left") (key=? k "right")
-            (key=? k "wheel-up") (key=? k "wheel-down") (key=? k "escape"))
+            (key=? k "wheel-up") (key=? k "wheel-down"))
         (make-user-create (user-create-username w) (user-create-text-color w)
                           (user-create-password1 w) (user-create-password2 w)
                           (if (or (eq? (user-create-editing w) 4)
@@ -748,6 +759,7 @@
                                                      (user-create-password1 w))))
                            (make-user-create (user-create-username w)
                                              (user-create-text-color w) "" "" 3))]
+       [(= (length (filter (lambda (x) (string=? x k)) VALID-CHARACTERS)) 0) w]
        [else (cond
                [(and (not (> (image-width (pestertext (string-append "  " (user-create-username w))
                                                       14 'white)) 346))

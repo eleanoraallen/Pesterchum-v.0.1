@@ -2,8 +2,6 @@
 (require 2htdp/batch-io)
 (require 2htdp/universe)
 
-;; password w/ invalid characters should not be accepted for create-user
-
 ;; -----------------------------------------------------------------------------------------
 ;; DEFINITIONS
 ;; -----------------------------------------------------------------------------------------
@@ -94,7 +92,7 @@
              (remove-pending-messages (first m))])]
     ;; new-user
     [(eq? (third m) "new-user")
-     (if (not (unique-username? (first m)))
+     (if (and (not (unique-username? (first m))) (not (string=? (first m) "pesterchumDev")))
          (make-bundle u (list (make-mail i (list "server" "" "create-fail" empty))) empty)
          (add-new-user-data (first m) (first (fourth m)) (second (fourth m))))]))
 
