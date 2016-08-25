@@ -4,6 +4,8 @@
 (require 2htdp/image)
 (require 2htdp/batch-io)
 
+;; Start and cease pestering messages
+
 ;; -----------------------------------------------------------------------------------------
 ;; DEFINITIONS
 ;; -----------------------------------------------------------------------------------------
@@ -75,16 +77,23 @@
   (make-user "testUser" 'c "blue"
              (list (list "testusersFriend" 'o false)
                    (list "testusersotherFriend" 'c true))
-             1 (list (list "testusersFriend" "testUser" "pester"
-                           (list "hello," "red"))
-                     (list "pesterchumDev" "testUser" "pester"
-                           (list "hello" "red"))
-                     (list "pesterchumDev" "testUser" "pester"
-                           (list "this is a test notice" "red"))
-                     (list "testUser" "testusersFriend" "pester"
-                           (list "hello back" "blue"))
-                     (list "testusersFriend" "testUser" "pester"
-                           (list "testing longer text message" "red")))
+             1 (append
+                '(("pesterchumDev"
+                   "allUsers" "pester"
+                   ("To whom it may concern," "black"))
+                  ("pesterchumDev" "allUsers" "pester"
+                                   ("" "black"))
+                  ("pesterchumDev"
+                   "allUsers"
+                   "pester"
+                   ("Hello." "black")))
+                (list
+                 (list "testusersFriend" "testUser" "pester"
+                       (list "hello," "red"))
+                 (list "testUser" "testusersFriend" "pester"
+                       (list "hello back" "blue"))
+                 (list "testusersFriend" "testUser" "pester"
+                       (list "testing longer text message" "red"))))
              (list
               (list "wantstobetusFriend" "testUser" "request")
               (list "alsowantstobetusFriend" "testUser" "request"))
@@ -106,6 +115,7 @@
 ;;  - "block"          : user blocks other user (server only)
 ;;  - "login-fail"     : failed login attempt
 ;;  - "create-fail"    : failed to create user
+;;  - "change-status"  : user changes status (server only)
 ;; content is an is the contence of a message which is:
 ;;  - for login content will be password
 ;;  - for login-data content will be '(text-color friends pesters requests)
@@ -113,10 +123,11 @@
 ;;  - for pester content will be '(string text-color)
 ;;  - for request the content will be empty
 ;;  - for request-accept the content will be friends-username
-;;  - for friends the content will be 'a list of '(username status)
+;;  - for friends the content will be 'a list of '(username status online?)
 ;;  - for block content is the username of the friend user wants to block
 ;;  - for login-fail content is empty
 ;;  - for create-fail content is empty
+;;  - for change status content is a symbol that is the user's status
 
 ;; pestertext : string int color --> image
 ;; takes a string, int, and color and outputs a coresponding text image
@@ -160,6 +171,16 @@
 (define CHIPPERMARKER (circle 8 'solid 'yellow))
 (define RANCOROROUSMARKER (circle 8 'solid 'red))
 (define NEWMESSAGEMARKER (circle 8 'solid 'blue))
+
+;; All the characters
+(define VALID-CHARACTERS
+  (list "`" "G" "#" "w" "}" ":" "f" "b" "V" "?" "Y" "l" "6" "P"
+        "O" "*" "x" "e" "T" "2" "H" "/" "X" "W" "&" "g" "{" ")"
+        "u" "n" "M" "E" "A" " " "B" "$" "R" "[" "~" ";" "0" "!"
+        "N" "C" "D" "I" "." "F" "(" "K" "@" "Q" "=" "j" "o" "%"
+        "λ" "a" "]" "r" "h" "_" "m" "p" "z" "c" "4" "i" "t" "v"
+        "9" "+" "5" "L" "y" "U" "q" "S" "-" "Z" "8" "^" "," "k"
+        "d" "3" "'" "7" "J" "1" "s"))
 
 ;; -----------------------------------------------------------------------------------------
 ;; Render
@@ -230,8 +251,9 @@
                                 (rectangle 350 30 'solid 'white))
                  (overlay/align "left" "middle"
                                 (beside
-                                 (pestertext (string-append " " (user-create-username w))
-                                             14 (user-create-text-color w))
+                                 (pestertext
+                                  (string-append " " (user-create-username w))
+                                  14 (user-create-text-color w))
                                  (if (eq? (user-create-editing w) 1)
                                      (rectangle 2 17 'solid 'black)
                                      (square 0 'solid 'pink)))
@@ -244,8 +266,9 @@
                                 (rectangle 350 30 'solid 'white))
                  (overlay/align "left" "middle"
                                 (beside
-                                 (pestertext (string-append " " (user-create-text-color w))
-                                             14 (user-create-text-color w))
+                                 (pestertext
+                                  (string-append " " (user-create-text-color w))
+                                  14 (user-create-text-color w))
                                  (if (eq? (user-create-editing w) 2)
                                      (rectangle 2 17 'solid 'black)
                                      (square 0 'solid 'pink)))
@@ -259,7 +282,8 @@
                  (overlay/align "left" "middle"
                                 (beside (rectangle 8 0 'solid 'pink)
                                         (pestertext (hidden-string
-                                                     (string-length (user-create-password1 w)))
+                                                     (string-length
+                                                      (user-create-password1 w)))
                                                     14 (user-create-text-color w))
                                         (if (eq? (user-create-editing w) 3)
                                             (rectangle 2 17 'solid 'black)
@@ -274,7 +298,8 @@
                  (overlay/align "left" "middle"
                                 (beside (rectangle 8 0 'solid 'pink)
                                         (pestertext (hidden-string
-                                                     (string-length (user-create-password2 w)))
+                                                     (string-length
+                                                      (user-create-password2 w)))
                                                     14 (user-create-text-color w))
                                         (if (eq? (user-create-editing w) 4)
                                             (rectangle 2 17 'solid 'black)
@@ -306,15 +331,20 @@
   (cond
     ;; none tab can be used as notice board
     [(eq? (user-tab w) "none")
-     (local [(define (render-notice l)
-               (cond
-                 [(empty? l) (square 0 'solid 'pink)]
-                 [else (above/align "left" (pestertext (first (fourth (first l))) 15 'black)
-                              (render-notice (rest l)))]))]
-       (if (not (empty? (filter (lambda (p) (eq? (first p) "pesterchumDev")) (user-pesters w))))
-           (overlay (above (pestertext "A Message from the Developer:" 30 'black)
-                           (render-notice (filter (lambda (p) (eq? (first p) "pesterchumDev")) (user-pesters w))))
-                    (square 600 'solid 'gold))
+     (local
+       [(define (render-notice l)
+          (cond
+            [(empty? l) (square 0 'solid 'pink)]
+            [else (above/align "left" (pestertext (first (fourth (first l))) 15 'black)
+                               (render-notice (rest l)))]))]
+       (if (not (empty? (filter (lambda (p) (eq? (first p) "pesterchumDev"))
+                                (user-pesters w))))
+           (overlay
+            (above (pestertext "A Message from the Developer:" 30 'black)
+                   (rectangle 0 30 'solid 'pink)
+                   (render-notice (filter (lambda (p) (eq? (first p) "pesterchumDev"))
+                                          (user-pesters w))))
+            (square 600 'solid 'gold))
            (square 600 'solid 'gold)))]
     [(eq? (user-tab w) "requests")
      (overlay (above
@@ -334,22 +364,21 @@
                                 (rectangle 150 30 'solid 'tan))))
               (square 600 'solid 'gold))]
     [else
-     (overlay (above
-               (overlay/align
-                "left" "top"
-                (render-pesters
-                 (reverse (filter (lambda (x) (or (eq? (second x) (user-tab w))
-                                                  (eq? (first x) (user-tab w))))
-                                  (user-pesters w))))
-                (rectangle 580 540 'solid 'white))
-               (rectangle 0 10 'solid 'pink)
-               (overlay/align
-                "left" "middle"
-                (beside (pestertext
-                         (string-append " " (user-text w))
-                         12 (user-text-color w))
-                        (rectangle 2 17 'solid (user-text-color w)))
-                (rectangle 580 30 'solid 'white)))
+     (overlay (above (overlay/align
+                      "left" "top"
+                      (render-pesters
+                       (reverse (filter (lambda (x) (or (eq? (second x) (user-tab w))
+                                                        (eq? (first x) (user-tab w))))
+                                        (user-pesters w))))
+                      (rectangle 580 540 'solid 'white))
+                     (rectangle 0 10 'solid 'pink)
+                     (overlay/align
+                      "left" "middle"
+                      (beside (pestertext
+                               (string-append " " (user-text w))
+                               12 (user-text-color w))
+                              (rectangle 2 17 'solid (user-text-color w)))
+                      (rectangle 580 30 'solid 'white)))
               (square 600 'solid 'gold))]))
 
 ;; first-n : list, int --> list
@@ -624,17 +653,31 @@
                                                      (eq? (first x) (user-tab w))))
                                                (user-pesters w))) MAXPESTERS)
                            (cons
-                            (list (user-username w) (user-tab w) "pester" (list (user-text w) (user-text-color w)))
-                            (append (reverse (rest (reverse (filter (lambda (x) (or (eq? (second x) (user-tab w)) (eq? (first x) (user-tab w)))) (user-pesters w)))))
-                                    (filter (lambda (x) (not (or (eq? (second x) (user-tab w)) (eq? (first x) (user-tab w))))) (user-pesters w))))
-                           (cons (list (user-username w) (user-tab w) "pester" (list (user-text w) (user-text-color w))) (user-pesters w)))
+                            (list (user-username w) (user-tab w) "pester"
+                                  (list (user-text w) (user-text-color w)))
+                            (append (reverse
+                                     (rest
+                                      (reverse
+                                       (filter (lambda (x) (or (eq? (second x) (user-tab w))
+                                                               (eq? (first x) (user-tab w))))
+                                               (user-pesters w)))))
+                                    (filter (lambda (x) (not (or (eq? (second x) (user-tab w))
+                                                                 (eq? (first x) (user-tab w)))))
+                                            (user-pesters w))))
+                           (cons (list (user-username w) (user-tab w) "pester"
+                                       (list (user-text w) (user-text-color w))) (user-pesters w)))
                        (user-requests w) (user-tab w) "")
-            (list (user-username w) (user-tab w) "pester" (list (user-text w) (user-text-color w))))])]
+            (list (user-username w) (user-tab w) "pester"
+                  (list (user-text w) (user-text-color w))))])]
+       [(= (length (filter (lambda (x) (string=? x k)) VALID-CHARACTERS)) 0) w]
        [else (if (or (>= (image-width (pestertext (string-append "  " (user-text w)) 12 'white)) 575)
-                     (and (eq? (user-tab w) "requests") (>= (image-width (pestertext (string-append "  " (user-text w)) 12 'white)) 415))
+                     (and (eq? (user-tab w) "requests")
+                          (>= (image-width (pestertext (string-append "  " (user-text w)) 12 'white)) 415))
                      (eq? (user-tab w) "none"))
-                 w (make-user (user-username w) (user-status w) (user-text-color w) (user-friends w)
-                              (user-viewing w) (user-pesters w) (user-requests w) (user-tab w) (string-append (user-text w) k)))])]
+                 w (make-user (user-username w) (user-status w)
+                              (user-text-color w) (user-friends w)
+                              (user-viewing w) (user-pesters w) (user-requests w)
+                              (user-tab w) (string-append (user-text w) k)))])]
     [(user-login? w)
      (cond
        [(or (key=? k "up") (key=? k "down") (key=? k "left") (key=? k "right")
@@ -642,27 +685,39 @@
         (make-user-login (user-login-username w)
                          (user-login-password w)
                          (if (eq? (user-login-editing w) 1) 2 1))]
-       [(key=? k "escape") (make-user-create "" "black" "" "" 1)]
        [(key=? k "\r") (make-package (make-user-login "" "" 1)
                                      (list (user-login-username w)
                                            "server" "login" (user-login-password w)))]
-       [(key=? k "\b") (if (eq? (user-login-editing w) 2)
-                           (make-user-login (user-login-username w)
-                                            (if (string=? (user-login-password w) "")
-                                                "" (substring (user-login-password w) 0 (- (string-length (user-login-password w)) 1))) 2)
-                           (make-user-login (if (string=? (user-login-username w) "")
-                                                "" (substring (user-login-username w) 0 (- (string-length (user-login-username w)) 1)))
-                                            (user-login-password w) 1))]
+       [(key=? k "\b")
+        (if (eq? (user-login-editing w) 2)
+            (make-user-login (user-login-username w)
+                             (if (string=? (user-login-password w) "")
+                                 "" (substring (user-login-password w) 0
+                                               (- (string-length (user-login-password w)) 1))) 2)
+            (make-user-login (if (string=? (user-login-username w) "")
+                                 "" (substring (user-login-username w) 0
+                                               (- (string-length (user-login-username w)) 1)))
+                             (user-login-password w) 1))]
+       [(= (length (filter (lambda (x) (string=? x k)) VALID-CHARACTERS)) 0) w]
        [else (cond
-               [(and (eq? (user-login-editing w) 1) (not (> (image-width (pestertext (string-append "  " (user-login-username w)) 14 'white)) 346)))
-                (make-user-login (string-append (user-login-username w) k) (user-login-password w) 1)]
-               [(and (eq? (user-login-editing w) 2) (not (> (image-width (pestertext (string-append "  " (user-login-password w)) 14 'white)) 346)))
-                (make-user-login (user-login-username w) (string-append (user-login-password w) k) 2)]
+               [(and (eq? (user-login-editing w) 1)
+                     (not (> (image-width
+                              (pestertext
+                               (string-append "  "
+                                              (user-login-username w)) 14 'white)) 346)))
+                (make-user-login (string-append (user-login-username w) k)
+                                 (user-login-password w) 1)]
+               [(and (eq? (user-login-editing w) 2)
+                     (not (> (image-width (pestertext
+                                           (string-append "  " (user-login-password w))
+                                           14 'white)) 346)))
+                (make-user-login (user-login-username w)
+                                 (string-append (user-login-password w) k) 2)]
                [else w])])]
     [(user-create? w)
      (cond
        [(or (key=? k "up") (key=? k "down") (key=? k "left") (key=? k "right")
-            (key=? k "wheel-up") (key=? k "wheel-down") (key=? k "escape"))
+            (key=? k "wheel-up") (key=? k "wheel-down"))
         (make-user-create (user-create-username w) (user-create-text-color w)
                           (user-create-password1 w) (user-create-password2 w)
                           (if (or (eq? (user-create-editing w) 4)
@@ -672,29 +727,39 @@
         (cond
           [(eq? (user-create-editing w) 1)
            (make-user-create (if (string=? (user-create-username w) "")
-                                 "" (substring (user-create-username w) 0 (- (string-length (user-create-username w)) 1)))
-                             (user-create-text-color w) (user-create-password1 w) (user-create-password2 w) 1)]
+                                 "" (substring (user-create-username w)
+                                               0 (- (string-length (user-create-username w)) 1)))
+                             (user-create-text-color w) (user-create-password1 w)
+                             (user-create-password2 w) 1)]
           [(eq? (user-create-editing w) 2)
            (make-user-create (user-create-username w)
                              (if (string=? (user-create-text-color w) "")
-                                 "" (substring (user-create-text-color w) 0 (- (string-length (user-create-text-color w)) 1)))
+                                 "" (substring (user-create-text-color w)
+                                               0 (- (string-length (user-create-text-color w)) 1)))
                              (user-create-password1 w) (user-create-password2 w) 2)]
           [(eq? (user-create-editing w) 3)
            (make-user-create (user-create-username w) (user-create-text-color w)
                              (if (string=? (user-create-password1 w) "")
-                                 "" (substring (user-create-password1 w) 0 (- (string-length (user-create-password1 w)) 1)))
+                                 "" (substring (user-create-password1 w)
+                                               0 (- (string-length (user-create-password1 w)) 1)))
                              (user-create-password2 w) 3)]
           [(eq? (user-create-editing w) 4)
            (make-user-create (user-create-username w) (user-create-text-color w) (user-create-password1 w)
                              (if (string=? (user-create-password2 w) "")
-                                 "" (substring (user-create-password2 w) 0 (- (string-length (user-create-password2 w)) 1))) 4)]
+                                 "" (substring (user-create-password2 w)
+                                               0 (- (string-length (user-create-password2 w)) 1))) 4)]
           [else w])]
        [(key=? k "\r") (if (and (eq? (user-create-password1 w) (user-create-password2 w))
                                 (>= (string-length (user-create-username w)) 2)
                                 (>= (string-length (user-create-password1 w)) 2))
                            (make-package (make-user-login "" "" 1)
-                                         (list (user-create-username w) "server" "new-user" (list (user-create-text-color w) (user-create-password1 w))))
-                           (make-user-create (user-create-username w) (user-create-text-color w) "" "" 3))]
+                                         (list (user-create-username w)
+                                               "server" "new-user"
+                                               (list (user-create-text-color w)
+                                                     (user-create-password1 w))))
+                           (make-user-create (user-create-username w)
+                                             (user-create-text-color w) "" "" 3))]
+       [(= (length (filter (lambda (x) (string=? x k)) VALID-CHARACTERS)) 0) w]
        [else (cond
                [(and (not (> (image-width (pestertext (string-append "  " (user-create-username w))
                                                       14 'white)) 346))
@@ -705,17 +770,20 @@
                                                       14 'white)) 346))
                      (eq? (user-create-editing w) 2))
                 (make-user-create (user-create-username w) (string-append (user-create-text-color w) k)
-                                  (user-create-password1 w) (user-create-password2 w) (user-create-editing w))]
+                                  (user-create-password1 w) (user-create-password2 w)
+                                  (user-create-editing w))]
                [(and (not (> (image-width (pestertext (string-append "  " (user-create-password1 w))
                                                       14 'white)) 346))
                      (eq? (user-create-editing w) 3))
                 (make-user-create (user-create-username w) (user-create-text-color w)
-                                  (string-append (user-create-password1 w) k) (user-create-password2 w) (user-create-editing w))]
+                                  (string-append (user-create-password1 w) k)
+                                  (user-create-password2 w) (user-create-editing w))]
                [(and (not (> (image-width (pestertext (string-append "  " (user-create-password2 w))
                                                       14 'white)) 346))
                      (eq? (user-create-editing w) 4))
                 (make-user-create (user-create-username w) (user-create-text-color w)
-                                  (user-create-password1 w) (string-append (user-create-password2 w) k) (user-create-editing w))]
+                                  (user-create-password1 w) (string-append (user-create-password2 w) k)
+                                  (user-create-editing w))]
                [else w])])]
     [else (error 'unexpected_worldstate)]))
 
@@ -740,10 +808,15 @@
                     (sort-new-messages (user-friends w) (list m))
                     (user-friends w))
                 (user-viewing w)
-                (if (>= (length (filter (lambda (x) (or (eq? (second x) (first m)) (eq? (first x) (first m)))) (user-pesters w))) MAXPESTERS)
+                (if (>= (length (filter (lambda (x) (or (eq? (second x) (first m))
+                                                        (eq? (first x) (first m))))
+                                        (user-pesters w))) MAXPESTERS)
                     (cons m
                           (append
-                           (reverse (rest (reverse (filter (lambda (x) (or (eq? (second x) (first m)) (eq? (first x) (first m)))) (user-pesters w)))))
+                           (reverse
+                            (rest (reverse (filter (lambda (x) (or (eq? (second x) (first m))
+                                                                   (eq? (first x) (first m))))
+                                                   (user-pesters w)))))
                            (filter (lambda (x) (not (eq? (first x) (first m)))) (user-pesters w))))
                     (cons m (user-pesters w)))
                 (user-requests w)
@@ -852,7 +925,8 @@
             (if (and (> x 490) (< x 640))
                 (make-package
                  (make-user-login "" "" 0)
-                 (list (user-create-username w) "server" "new-user" (list (user-create-text-color w) (user-create-password1 w))))
+                 (list (user-create-username w) "server" "new-user"
+                       (list (user-create-text-color w) (user-create-password1 w))))
                 w))]
        [else w])]  
     [else (error 'unexpected_worldstate!)]))
@@ -863,14 +937,20 @@
   (cond
     ;; status buttons
     [(and (> y 500) (< x 310))
-     (make-user
-      (user-username w)
-      (cond
-        [(< x 110) (if (< y 550) 'c 'pe)]
-        [(< x 220) (if (< y 550) 'b 'ch)]
-        [else (if (< y 550) 'p 'r)])
-      (user-text-color w) (user-friends w) (user-viewing w)
-      (user-pesters w) (user-requests w) (user-tab w) (user-text w))]
+     (make-package
+      (make-user
+       (user-username w)
+       (cond
+         [(< x 110) (if (< y 550) 'c 'pe)]
+         [(< x 220) (if (< y 550) 'b 'ch)]
+         [else (if (< y 550) 'p 'r)])
+       (user-text-color w) (user-friends w) (user-viewing w)
+       (user-pesters w) (user-requests w) (user-tab w) (user-text w))
+      (list (user-username w) "server" "change-status"
+            (cond
+              [(< x 110) (if (< y 550) 'c 'pe)]
+              [(< x 220) (if (< y 550) 'b 'ch)]
+              [else (if (< y 550) 'p 'r)])))]
     ;; add chum, block, pester buttons
     [(and (> y 390) (< y 410) (< x 310))
      (cond
@@ -902,12 +982,25 @@
                                                       (eq? (first x) (user-tab w))))
                                                 (user-pesters w))) MAXPESTERS)
                             (cons
-                             (list (user-username w) (user-tab w) "pester" (list (user-text w) (user-text-color w)))
-                             (append (reverse (rest (reverse (filter (lambda (x) (or (eq? (second x) (user-tab w)) (eq? (first x) (user-tab w)))) (user-pesters w)))))
-                                     (filter (lambda (x) (not (or (eq? (second x) (user-tab w)) (eq? (first x) (user-tab w))))) (user-pesters w))))
-                            (cons (list (user-username w) (user-tab w) "pester" (list (user-text w) (user-text-color w))) (user-pesters w)))
+                             (list (user-username w) (user-tab w) "pester"
+                                   (list (user-text w) (user-text-color w)))
+                             (append
+                              (reverse
+                               (rest
+                                (reverse
+                                 (filter (lambda (x) (or (eq? (second x) (user-tab w))
+                                                         (eq? (first x) (user-tab w))))
+                                         (user-pesters w)))))
+                              (filter (lambda (x) (not (or (eq? (second x) (user-tab w))
+                                                           (eq? (first x) (user-tab w)))))
+                                      (user-pesters w))))
+                            (cons
+                             (list (user-username w) (user-tab w) "pester"
+                                   (list (user-text w) (user-text-color w)))
+                             (user-pesters w)))
                         (user-requests w) (user-tab w) "")
-             (list (user-username w) (user-tab w) "pester" (list (user-text w) (user-text-color w)))))])]
+             (list (user-username w) (user-tab w) "pester"
+                   (list (user-text w) (user-text-color w)))))])]
     ;; send request button
     [(and (> x 760) (> y 560) (eq? (user-tab w) "requests") (not (string=? (user-text w) "")))
      (make-package
@@ -929,12 +1022,18 @@
           (make-package
            (make-user (user-username w) (user-status w) (user-text-color w)
                       (user-friends w) (user-viewing w) (user-pesters w)
-                      (filter (lambda (z) (not (eq? (first z) (second (request-action x (- y 10) (user-requests w))))))
+                      (filter (lambda (z)
+                                (not (eq? (first z)
+                                          (second (request-action x (- y 10) (user-requests w))))))
                               (user-requests w)) (user-tab w) (user-text w))
-           (list (user-username w) "server" "request-accept" (second (request-action x (- y 10) (user-requests w)))))]
-         [else (make-user (user-username w) (user-status w) (user-text-color w) (user-friends w) (user-viewing w) (user-pesters w)
-                          (filter (lambda (z) (not (eq? (first z) (second (request-action x (- y 10) (user-requests w))))))
-                                  (user-requests w)) (user-tab w) (user-text w))]))]
+           (list (user-username w) "server" "request-accept"
+                 (second (request-action x (- y 10) (user-requests w)))))]
+         [else (make-user
+                (user-username w) (user-status w) (user-text-color w)
+                (user-friends w) (user-viewing w) (user-pesters w)
+                (filter (lambda (z) (not (eq? (first z)
+                                              (second (request-action x (- y 10) (user-requests w))))))
+                        (user-requests w)) (user-tab w) (user-text w))]))]
     ;; select friend from friendlist
     [(and (> x 10) (< x 310) (> y 76) (< y 378))
      (local
