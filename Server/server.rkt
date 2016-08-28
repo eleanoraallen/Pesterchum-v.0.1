@@ -43,6 +43,10 @@
 ;;  - for create-fail content is empty
 ;;  - for change status content is a symbol that is the user's status
 
+;; a package is on of:
+;; - a message
+;; - a list of messages
+
 ;; a user-data is a list of strings that is:
 ;; - '(username text-color password-block friends)
 
@@ -87,13 +91,28 @@
 ;; takes a universe, the iworld that sent a message, and that message and updates universe
 (define (handle-msg u i m)
   (cond
+    ;; pester & timestamp
+    [(= (length m) 2)
+     (cond
+       [(online? (second (first m)) u)
+        (make-bundle u (list (make-mail (username->iworld (second (first m)) u) (first m))
+                             (make-mail (username->iworld (second (first m)) u) (second m))) empty)]
+       [else (write-file
+              "pending_messages.txt"
+              (string-append
+               (read-file "pending_messages.txt")
+               " \n"
+               (string-append (first (first m)) " " (second (first m)) " " (third (first m)) " "
+                              (first (fourth (first m))) " " (second (fourth (first m))) " \n"
+                              (first (second m)) " " (second (second m)) " " (third (second m)) " "
+                              (first (fourth (second m))) " " (second (fourth (second m)))))) u])]
     ;; login
     [(string=? (third m) "login")
      (cond
        [(or (unique-username? (first m)) (not (password-success? (get-user-data (first m)) (fourth m))))
         (make-bundle u (list (make-mail i (list "server" "user" "login-fail" empty))) empty)]
-       [else (remove-pending-messages (first m))
-             (make-bundle (log-user-in u i (first m)) (list (make-mail i (make-login-data (first m) u))) empty)])]
+       [(password-success? (get-user-data (first m)) (fourth m))
+        (make-bundle (log-user-in u i (first m)) (list (make-mail i (make-login-data (first m) u))) empty)])]
     ;; new-user
     [(string=? (third m) "new-user")
      (cond
@@ -104,12 +123,11 @@
     [(string=? (third m) "pester")
      (cond
        [(online? (second m) u) (make-bundle u (list (make-mail (username->iworld (second m) u) m)) empty)]
-       [(unique-username? (second m)) u]
        [else (write-file
               "pending_messages.txt"
               (string-append
                (read-file "pending_messages.txt")
-               "\n"
+               " \n"
                (string-append (first m) " " (second m) " " (third m) " "
                               (first (fourth m)) " " (second (fourth m))))) u])]
     ;; request
@@ -121,7 +139,7 @@
               "pending_messages.txt"
               (string-append
                (read-file "pending_messages.txt")
-               "\n"
+               " \n"
                (string-append (first m) " " (second m) " " (third m)))) u])]
     ;; request-accept
     [(string=? (third m) "request-accept") (add-friends (first m) (fourth m)) u]
@@ -129,7 +147,7 @@
     [(string=? (third m) "block") (remove-friends (first m) (fourth m)) u]
     ;; change-status
     [(string=? (third m) "change-status")
-     (map (lambda (x) (if (iworld=? i (first x)) (list i (first m) (fourth m)) x)) u) u]
+     (map (lambda (x) (if (iworld=? i (first x)) (list i (first m) (fourth m)) x)) u)]
     [else u]))
 
 ;; add-friends : username, username --> write-file
@@ -139,15 +157,18 @@
     [(define (edit-user-data-lolos l)
        (cond
          [(empty? l) empty]
+         [(empty? (first l)) (edit-user-data-lolos (rest l))]
          [(string=? u1 (first (first l)))
           (cons
-           (list (first (first l)) (second (first l)) (third (first l))
-                 (sort (cons u2 (rest (rest (rest (first l))))) string<?))
+           (append
+            (list (first (first l)) (second (first l)) (third (first l)))
+            (sort (cons u2 (rest (rest (rest (first l))))) string<?))
            (edit-user-data-lolos (rest l)))]
          [(string=? u2 (first (first l)))
           (cons
-           (list (first (first l)) (second (first l)) (third (first l))
-                 (sort (cons u1 (rest (rest (rest (first l))))) string<?))
+           (append
+            (list (first (first l)) (second (first l)) (third (first l)))
+            (sort (cons u1 (rest (rest (rest (first l))))) string<?))
            (edit-user-data-lolos (rest l)))]
          [else (cons (first l) (edit-user-data-lolos (rest l)))]))]
     (write-file
@@ -160,15 +181,16 @@
     [(define (edit-user-data-lolos l)
        (cond
          [(empty? l) empty]
+         [(empty? (first l)) (edit-user-data-lolos (rest l))]
          [(string=? u1 (first (first l)))
           (cons
-           (list (first (first l)) (second (first l)) (third (first l))
-                 (filter (lambda (x) (not (string=? x u2)) (rest (rest (rest (first l)))))))
+           (append (list (first (first l)) (second (first l)) (third (first l)))
+                   (filter (lambda (x) (not (string=? x u2))) (rest (rest (rest (first l))))))
            (edit-user-data-lolos (rest l)))]
          [(string=? u2 (first (first l)))
           (cons
-           (list (first (first l)) (second (first l)) (third (first l))
-                 (filter (lambda (x) (not (string=? x u1)) (rest (rest (rest (first l)))))))
+           (append (list (first (first l)) (second (first l)) (third (first l)))
+                   (filter (lambda (x) (not (string=? x u1))) (rest (rest (rest (first l))))))
            (edit-user-data-lolos (rest l)))]
          [else (cons (first l) (edit-user-data-lolos (rest l)))]))]
     (write-file
@@ -188,6 +210,7 @@
 (define (online? s u)
   (cond
     [(empty? u) false]
+    [(< (length (first u)) 3) (online? s (rest u))]
     [else (or (string=? (second (first u)) s)
               (online? s (rest u)))]))
 
@@ -214,7 +237,13 @@
 ;; password-sucess? : user-data, string --> bool
 ;; true iff string decripts user-data passwordblock
 (define (password-success? d p)
-  (string=? (decrypt (substring (third d) 0 (string-length p)) p) p))
+  (and (> (string-length p) 1)
+       
+       (string=? (decrypt (substring (third d) 0 (string-length p)) p) p)
+       (string=? (decrypt (substring (third d) (string-length p) (if (< (string-length p) 10)
+                                                                     (+ (string-length p) 1)
+                                                                     (+ (string-length p) 2))) p)
+                 (number->string (string-length p)))))
 
 ;; get-user-data : username --> user-data
 ;; takes username and returns user-data from "user_data" file
@@ -233,7 +262,7 @@
           (list
            (second DATA)
            (get-friends (rest (rest (rest DATA))) s u)
-           (append (get-pesters s) (dev-notice))
+           (append (reverse (get-pesters s)) (dev-notice))
            (get-requests s)))))
 
 ;; get-friends : list-of-strings, username, universe --> list-of-friends
@@ -251,30 +280,35 @@
       [else (cons
              (list (first l)
                    (get-friend-status (first l) u)
-                   (> (length (filter (lambda (x) (string=? (first x) (first l)) (get-pesters s)))) 0))
+                   (> (length (filter (lambda (x) (string=? (first x) (first l))) (get-pesters s))) 0))
              (get-friends (rest l) s u))])))
 
 ;; get-pesters : string --> list-of-pesters
 ;; takes username and returns a list of all pesters sent to that user from pending_messages file
 (define (get-pesters s)
-  (map (lambda (m) (list (first m) (second m) (list (third m) (fourth m))))
+  (map (lambda (x) (list (first x) (second x)
+                         "pester"
+                         (list (words->line
+                                (rest (rest (rest (reverse (rest (reverse x)))))))
+                               (first (reverse x)))))
        (filter (lambda (m) (string=? (third m) "pester"))
-               (get-messages (read-lines "pending_messages.txt") s))))
+               (get-messages (read-words/line "pending_messages.txt") s))))
 
 ;; get-requests : string --> list-of-requests
 ;; takes username and returns a list of all messages sent to that user from pending_messages
 (define (get-requests s)
   (filter (lambda (m) (string=? (third m) "request"))
-          (get-messages (read-lines "pending_messages.txt") s)))
+          (get-messages (read-words/line "pending_messages.txt") s)))
 
 ;; get-messages : list-messages, string --> list-of-messages
 ;; gets all messages sent to a given username
 (define (get-messages l s)
   (cond
     [(empty? l) empty]
+    [(empty? (first l)) (get-messages (rest l) s)]
     [else (if (string=? (second (first l)) s)
-              (cons (first l) (get-messages (rest l)))
-              (get-messages (rest l)))]))
+              (cons (first l) (get-messages (rest l) s))
+              (get-messages (rest l) s))]))
 
 ;; log-user-in : universe, iworld, username --> universe
 ;; updates universe to reflect that a user has logged in
@@ -321,60 +355,22 @@
     [(string=? s (first l)) n]
     [else (get-list-ref-number s (rest l) (+ n 1))]))
 
-;; remove-pending-messages : string --> write-file
-;; removes all messages sent to a given username from the pending_messages file
-(define (remove-pending-messages s)
-  (write-file
-   "pending_messages.txt"
-   (los->string (words->line (filter (lambda (x)
-                                       (and (> (length x) 0)
-                                            (not (string=? (second x) s))))
-                                     (read-words/line "pending_messages.txt"))))))
-
 ;; los->string : los --> string
 ;; writes list-of-strings as a string w/ line breaks in between lists
 (define (los->string l)
   (cond
     [(empty? l) ""]
-    [(not (list? l)) ""]
     [else (string-append (first l) "\n" (los->string (rest l)))]))
 
 ;; add-new-user-data : username, text-color, password --> write-files
-;; adds new-user to user_data file and adds welcome message to pending_messages file
+;; adds new-user to user_data file
 (define (add-new-user-data s t p)
-  (write-file "user_data.txt" (string-append (read-file "user_data.txt") "\n"
-                                             s " " t " " (encrypt (string-append p (random-string (- 50 (string-length p)))) p)))
-  (local [(define (pesters->los l)
-            (cond
-              [(empty? l) empty]
-              [else (cons (string-append
-                           (first (first l)) " "
-                           (second (first l)) " "
-                           (third (first l)) " "
-                           (first (fourth (first l))) " "
-                           (second (fourth (first l))))
-                          (pesters->los (rest l)))]))]
-    (write-file "pending_messages.txt"
-                (string-append
-                 (read-file "pending_messages.txt") "\n"
-                 (los->string
-                  (pesters->los
-                   (list
-                    (list "pesterchumDev" s "pester" (list "To whom it may concern," "black"))
-                    (list "pesterchumDev" s "pester" (list "" "black"))
-                    (list "pesterchumDev" s "pester" (list "Hello. If you are reading this, it means you are using my" "black"))
-                    (list"pesterchumDev" s "pester" (list "instant messenger program. Why you happen to have decided" "black"))
-                    (list"pesterchumDev" s "pester" (list "to use a barely functional and entirely unsafe piece of" "black"))
-                    (list "pesterchumDev" s "pester" (list "software based on a fictional program from a web comic when" "black"))
-                    (list "pesterchumDev" s "pester" (list "you have literally thousands of other options available to" "black"))
-                    (list "pesterchumDev" s "pester" (list "you is beyond me. Assuming that you never figure out how" "black"))
-                    (list "pesterchumDev" s  "pester" (list "shoddy this all really is and assuming that I can find the " "black"))
-                    (list "pesterchumDev" s "pester" (list "time, I might post relevant information about updates and " "black"))
-                    (list "pesterchumDev" s "pester" (list "things like that here. So stay tuned. " "black"))
-                    (list "pesterchumDev" s "pester" (list "" "black"))
-                    (list "pesterchumDev" s "pester" (list "Yours," "black"))
-                    (list "pesterchumDev" s "pester" (list "- PCD" "black")))))))))
-
+  (write-file "user_data.txt"
+              (string-append (read-file "user_data.txt") "\n"
+                             s " " t " " (encrypt (string-append p (number->string (string-length p)) (random-string (- 50
+                                                                                                                        (if (< (string-length p) 10)
+                                                                                                                            (+ (string-length p) 1)
+                                                                                                                            (+ (string-length p) 2))))) p))))
 ;; random-string : int --> string
 ;; string of random characters int characters long
 (define (random-string i)
@@ -407,17 +403,35 @@
 ;; takes a universe and sends updated friend data to all logged in users
 (define (tock u)
   (local
-    [(define (make-friend-mail u)
+    [(define (make-friend-mail l)
        (cond
-         [(empty? u) empty]
-         [else (if (< (length (first u)) 2)
-                   (make-friend-mail (rest u))
+         [(empty? l) empty]
+         [else (if (< (length (first l)) 2)
+                   (make-friend-mail (rest l))
                    (cons
-                    (make-mail (first (first u))
-                               (list "server" (second (first u)) "friends"
-                                     (get-friends (rest (rest (rest (get-user-data (second (first u)))))) (second (first u)) u)))
-                    (make-friend-mail (rest u))))]))]
+                    (make-mail (first (first l))
+                               (list "server" (second (first l)) "friends"
+                                     (get-friends (rest (rest (rest (get-user-data (second (first l)))))) (second (first l)) u)))
+                    (make-friend-mail (rest l))))]))]
+    (map (lambda (x) (if (> (length x) 1) (remove-pending-messages (second x)) x)) u)
     (make-bundle u (make-friend-mail u) empty)))
+
+;; remove-pending-messages : string --> write-file
+;; removes all messages sent to a given username from the pending_messages file
+(define (remove-pending-messages s)
+  (if
+   (or (empty? (read-words/line "pending_messages.txt"))
+       (empty? (filter (lambda (x)
+                         (and (> (length x) 0)
+                              (not (string=? (second x) s))))
+                       (read-words/line "pending_messages.txt"))))
+   (write-file "pending_messages.txt" "")
+   (write-file
+    "pending_messages.txt"
+    (los->string (map words->line (filter (lambda (x)
+                                            (and (> (length x) 0)
+                                                 (not (string=? (second x) s))))
+                                          (read-words/line "pending_messages.txt")))))))
 
 ;; -----------------------------------------------------------------------------------------
 ;; Universe
@@ -426,7 +440,7 @@
           [port 9000]
           [on-new handle-new]
           [on-msg handle-msg]
-          [on-tick tock 3]
+          [on-tick tock]
           [on-disconnect disconnect])
 
 

@@ -3,8 +3,7 @@
 (require 2htdp/universe)
 (require 2htdp/image)
 (require 2htdp/batch-io)
-
-;; Start and cease pestering messages
+(require racket/date)
 
 ;; -----------------------------------------------------------------------------------------
 ;; DEFINITIONS
@@ -129,6 +128,10 @@
 ;;  - for create-fail content is empty
 ;;  - for change status content is a symbol that is the user's status
 
+;; a package is on of:
+;; - a message
+;; - a list of messages
+
 ;; pestertext : string int color --> image
 ;; takes a string, int, and color and outputs a coresponding text image
 (define (pestertext t s c) (text/font t s c "Courier New" 'default 'normal 'bold false))
@@ -197,7 +200,7 @@
      (overlay/align
       "middle" "top"
       (above (rectangle 0 30 'solid 'pink)
-             (pestertext "PESTERCHUM 0.1" 85 'white)) 
+             (pestertext "PESTERCHUM beta" 85 'white)) 
       (overlay
        (above (if (and (string=? (user-login-username w) "")
                        (not (= (user-login-editing w) 1)))
@@ -330,7 +333,7 @@
 (define (render-tab w)
   (cond
     ;; none tab can be used as notice board
-    [(eq? (user-tab w) "none")
+    [(string=? (user-tab w) "none")
      (local
        [(define (render-notice l)
           (cond
@@ -346,7 +349,7 @@
                                           (user-pesters w))))
             (square 600 'solid 'gold))
            (square 600 'solid 'gold)))]
-    [(eq? (user-tab w) "requests")
+    [(string=? (user-tab w) "requests")
      (overlay (above
                (overlay/align
                 "left" "top"
@@ -422,8 +425,11 @@
            (overlay/align
             "left" "middle"
             (pestertext (string-append
-                         " " (get-initials (first (first l)))
-                         ": " (first (fourth (first l))))
+                         (if (and (> (string-length (first (fourth (first l)))) 5)
+                                  (string=? (substring (first (fourth (first l))) 0 2) "--")
+                                  (string=? (second (fourth (first l))) "black"))
+                             " "
+                             (string-append " " (get-initials (first (first l))) ": ")) (first (fourth (first l))))
                         12 (second (fourth (first l))))
             (rectangle 580 20 'solid 'white))
            (render-pesters (rest l)))]))
@@ -447,7 +453,7 @@
 (define (render-sidebar w)
   (overlay
    (above
-    (pestertext "PESTERCHUM 0.1" 35 'white)
+    (pestertext "PESTERCHUM beta" 35 'white)
     (rectangle 0 5 'solid 'pink)
     (beside (rectangle 8 0 'solid 'pink)
             (above/align
@@ -531,7 +537,7 @@
         "right" "middle"
         (beside (if (third (first l)) NEWMESSAGEMARKER
                     (square 0 'solid 'pink)) (rectangle 5 0 'solid 'pink))
-        (if (eq? (first (first l)) t) (rectangle 300 25 'solid (make-color 80 80 80))
+        (if (string=? (first (first l)) t) (rectangle 300 25 'solid (make-color 80 80 80))
             (rectangle 300 25 'solid 'black))))
       (render-friends (rest l) t))]))
 
@@ -539,7 +545,9 @@
 ;; returns the intth group of VIEWINT items in list
 (define (get-group l i)
   (remove-from-end (remove-from-front l (* (- i 1) VIEWINT))
-                   (- (length (remove-from-front l (* (- i 1) VIEWINT))) 25)))
+                   (if (> (length (remove-from-front l (* (- i 1) VIEWINT))) VIEWINT)
+                       (- (length (remove-from-front l (* (- i 1) VIEWINT))) VIEWINT)
+                       0)))
 
 ;; remove-from-front : list int --> list
 ;; removes int elements from the front of list
@@ -638,42 +646,66 @@
                        "" (substring (user-text w) 0 (- (string-length (user-text w)) 1))))]
        [(key=? k "\r")
         (cond
-          [(or (string=? (user-text w) "") (eq? (user-tab w) "none")) w]
-          [(eq? (user-tab w) "requests")
-           (make-package
-            (make-user (user-username w) (user-status w) (user-text-color w) (user-friends w)
-                       (user-viewing w) (user-pesters w) (user-requests w) (user-tab w) "")
-            (list (user-username w) (user-text w) "request" empty))]
+          [(or (string=? (user-text w) "") (string=? (user-tab w) "none")) w]
+          [(string=? (user-tab w) "requests")
+           (if (string=? (user-text w) (user-username w))
+               w
+               (make-package
+                (make-user (user-username w) (user-status w) (user-text-color w) (user-friends w)
+                           (user-viewing w) (user-pesters w) (user-requests w) (user-tab w) "")
+                (list (user-username w) (user-text w) "request" empty)))]
           [else
            (make-package
             (make-user (user-username w) (user-status w) (user-text-color w)
                        (user-friends w) (user-viewing w)
-                       (if (>= (length (filter (lambda (x)
-                                                 (or (eq? (second x) (user-tab w))
-                                                     (eq? (first x) (user-tab w))))
-                                               (user-pesters w))) MAXPESTERS)
-                           (cons
-                            (list (user-username w) (user-tab w) "pester"
-                                  (list (user-text w) (user-text-color w)))
-                            (append (reverse
-                                     (rest
-                                      (reverse
-                                       (filter (lambda (x) (or (eq? (second x) (user-tab w))
-                                                               (eq? (first x) (user-tab w))))
-                                               (user-pesters w)))))
-                                    (filter (lambda (x) (not (or (eq? (second x) (user-tab w))
-                                                                 (eq? (first x) (user-tab w)))))
-                                            (user-pesters w))))
-                           (cons (list (user-username w) (user-tab w) "pester"
-                                       (list (user-text w) (user-text-color w))) (user-pesters w)))
+                       (cond
+                         [(>= (length (filter (lambda (x)
+                                                (or (string=? (second x) (user-tab w))
+                                                    (string=? (first x) (user-tab w))))
+                                              (user-pesters w))) MAXPESTERS)
+                          (cons
+                           (list (user-username w) (user-tab w) "pester"
+                                 (list (user-text w) (user-text-color w)))
+                           (append (reverse
+                                    (rest
+                                     (reverse
+                                      (filter (lambda (x) (or (string=? (second x) (user-tab w))
+                                                              (string=? (first x) (user-tab w))))
+                                              (user-pesters w)))))
+                                   (filter (lambda (x) (not (or (string=? (second x) (user-tab w))
+                                                                (string=? (first x) (user-tab w)))))
+                                           (user-pesters w))))]
+                         [(> (length (filter (lambda (x)
+                                               (or (string=? (second x) (user-tab w))
+                                                   (string=? (first x) (user-tab w))))
+                                             (user-pesters w))) 0)
+                          (cons (list (user-username w) (user-tab w) "pester"
+                                      (list (user-text w) (user-text-color w))) (user-pesters w))]
+                         [else (list
+                                (list (user-username w) (user-tab w) "pester"
+                                      (list (user-text w) (user-text-color w)))
+                                (list (user-username w) (user-tab w) "pester"
+                                      (list (string-append "-- " (user-username w) " [" (get-initials (user-username w)) "] began pestering "
+                                                           (user-tab w) " [" (get-initials (user-tab w)) "] at " (number->string (date-hour (current-date))) ":"
+                                                           (number->string (date-minute (current-date))) " --") "black")))])
                        (user-requests w) (user-tab w) "")
-            (list (user-username w) (user-tab w) "pester"
-                  (list (user-text w) (user-text-color w))))])]
+            (if (> (length (filter (lambda (x)
+                                     (or (string=? (second x) (user-tab w))
+                                         (string=? (first x) (user-tab w))))
+                                   (user-pesters w))) 0)
+                (list (user-username w) (user-tab w) "pester" (list (user-text w) (user-text-color w)))
+                (list
+                 (list (user-username w) (user-tab w) "pester"
+                       (list (string-append "-- " (user-username w) " [" (get-initials (user-username w)) "] began pestering "
+                                            (user-tab w) " [" (get-initials (user-tab w)) "] at " (number->string (date-hour (current-date))) ":"
+                                            (number->string (date-minute (current-date))) " --") "black"))
+                 (list (user-username w) (user-tab w) "pester"
+                       (list (user-text w) (user-text-color w))))))])]
        [(= (length (filter (lambda (x) (string=? x k)) VALID-CHARACTERS)) 0) w]
-       [else (if (or (>= (image-width (pestertext (string-append "  " (user-text w)) 12 'white)) 575)
-                     (and (eq? (user-tab w) "requests")
+       [else (if (or (>= (image-width (pestertext (string-append "     " (user-text w)) 12 'white)) 575)
+                     (and (string=? (user-tab w) "requests")
                           (>= (image-width (pestertext (string-append "  " (user-text w)) 12 'white)) 415))
-                     (eq? (user-tab w) "none"))
+                     (string=? (user-tab w) "none"))
                  w (make-user (user-username w) (user-status w)
                               (user-text-color w) (user-friends w)
                               (user-viewing w) (user-pesters w) (user-requests w)
@@ -761,8 +793,7 @@
                                              (user-create-text-color w) "" "" 3))]
        [(= (length (filter (lambda (x) (string=? x k)) VALID-CHARACTERS)) 0) w]
        [else (cond
-               [(and (not (> (image-width (pestertext (string-append "  " (user-create-username w))
-                                                      14 'white)) 346))
+               [(and (< (string-length (user-create-username w)) 20)
                      (eq? (user-create-editing w) 1))
                 (make-user-create (string-append (user-create-username w) k) (user-create-text-color w)
                                   (user-create-password1 w) (user-create-password2 w) (user-create-editing w))]
@@ -790,7 +821,7 @@
 ;; update-viewing : int int --> int
 ;; takes one int the int that shows which group of VIEWINT friends the user is viewing and one int that is the
 ;; lenght of the user's friendlist and outputs and updates the first int to show the next friend group if necessary
-(define (update-viewing v f) (if (>= (* v VIEWINT) f) 1 (+ f 1)))
+(define (update-viewing v f) (if (>= (* v VIEWINT) f) 1 (+ v 1)))
 
 ;; -----------------------------------------------------------------------------------------
 ;; Recieve Message
@@ -826,8 +857,8 @@
      (make-user (second m) 'c (first (fourth m))
                 (sort-new-messages (second (fourth m))
                                    (third (fourth m)))
-                1 (third (fourth m))
-                (fourth (fourth m)) "none" "")]
+                1 (handle-login-pesters (third (fourth m)))
+                (remove-duplicates (fourth (fourth m))) "none" "")]
     [(string=? (third m) "request")
      (make-user (user-username w)
                 (user-status w)
@@ -835,7 +866,9 @@
                 (user-friends w)
                 (user-viewing w)
                 (user-pesters w)
-                (cons m (user-requests w))
+                (if (> (length (filter (lambda (x) (string=? (first x) (first m))) (user-requests w))) 0)
+                    (user-requests w)
+                    (cons m (user-requests w)))
                 (user-tab w)
                 (user-text w))]
     [(string=? (third m) "friends")
@@ -852,6 +885,32 @@
     [(string=? (third m) "create-fail") (make-user-login "Account creation failed!" "" 0)]
     [else (error 'unexpected_message)]))
 
+;; handle-login-pesters : list-of-pesters --> list-of-pesters
+;; removes all but first 20 sent from any one other user
+(define (handle-login-pesters l)
+  (cond
+    [(empty? l) empty]
+    [else
+     (append
+      (cons (first l) (first-n (filter (lambda (x) (string=? (first (first l)) (first x))) (rest l)) (- MAXPESTERS 1)))
+      (handle-login-pesters (filter (lambda (x) (not (string=? (first (first l)) (first x)))) l)))]))
+
+;; first-n : list, int --> list
+;; returns up to the first int elements in a given list
+
+;; remove-duplicates : list-of-messagaes --> list-of-messages
+;; removes all duplicate messages w/ same sender, recipient, & purpouse
+(define (remove-duplicates l)
+  (cond
+    [(empty? l) empty]
+    [else
+     (cons (first l)
+           (remove-duplicates
+            (filter (lambda (x)
+                      (not (and (string=? (first x) (first (first l)))
+                                (string=? (second x) (second (first l)))
+                                (string=? (third x) (third (first l))))))
+                    (rest l))))]))
 
 ;; sort-new-messages : LOSS&B LOP --> LOSS&B
 ;; sets corisponding values of bools in LOSS&B to true
@@ -957,11 +1016,30 @@
      (cond
        ;; add chum button
        [(and (> x 10) (< x 110))
-        (if (string=? (user-tab w) "requests")
-            w
-            (make-user (user-username w) (user-status w) (user-text-color w)
-                       (user-friends w) (user-viewing w) (user-pesters w)
-                       (user-requests w) "requests" ""))]
+        (cond
+          [(string=? (user-tab w) "requests") w]
+          [(string=? (user-tab w) "none")
+           (make-user (user-username w) (user-status w) (user-text-color w)
+                      (user-friends w) (user-viewing w) (user-pesters w)
+                      (user-requests w) "requests" "")]
+          [else (if
+                 (> (length (filter (lambda (x) (or (string=? (first x) (user-tab w))
+                                                    (string=? (second x) (user-tab w))))
+                                    (user-pesters w))) 0)
+                 (make-package
+                  (make-user (user-username w) (user-status w) (user-text-color w)
+                             (user-friends w) (user-viewing w) (filter (lambda (x) (not (or (string=? (user-tab w) (first x))
+                                                                                            (string=? (user-tab w) (second x))))) (user-pesters w))
+                             (user-requests w) "requests" "")
+                  (list (user-username w) (user-tab w) "pester"
+                        (list
+                         (string-append "-- " (user-username w) " [" (get-initials (user-username w)) "] ceased pestering "
+                                        (user-tab w) " [" (get-initials (user-tab w)) "] at " (number->string (date-hour (current-date))) ":"
+                                        (number->string (date-minute (current-date))) " --")
+                         "black")))
+                 (make-user (user-username w) (user-status w) (user-text-color w)
+                            (user-friends w) (user-viewing w) (user-pesters w)
+                            (user-requests w) "requests" ""))])]
        ;; block button
        [(and (> x 110) (< x 210))
         (if (or (string=? (user-tab w) "requests") (string=? (user-tab w) "none"))
@@ -978,30 +1056,49 @@
             (make-package
              (make-user (user-username w) (user-status w) (user-text-color w)
                         (user-friends w) (user-viewing w)
-                        (if (>= (length (filter (lambda (x)
-                                                  (or (string=? (second x) (user-tab w))
-                                                      (string=? (first x) (user-tab w))))
-                                                (user-pesters w))) MAXPESTERS)
-                            (cons
-                             (list (user-username w) (user-tab w) "pester"
-                                   (list (user-text w) (user-text-color w)))
-                             (append
-                              (reverse
-                               (rest
-                                (reverse
-                                 (filter (lambda (x) (or (string=? (second x) (user-tab w))
-                                                         (string=? (first x) (user-tab w))))
-                                         (user-pesters w)))))
-                              (filter (lambda (x) (not (or (string=? (second x) (user-tab w))
-                                                           (string=? (first x) (user-tab w)))))
-                                      (user-pesters w))))
-                            (cons
-                             (list (user-username w) (user-tab w) "pester"
-                                   (list (user-text w) (user-text-color w)))
-                             (user-pesters w)))
+                        (cond
+                          [(>= (length (filter (lambda (x)
+                                                 (or (string=? (second x) (user-tab w))
+                                                     (string=? (first x) (user-tab w))))
+                                               (user-pesters w))) MAXPESTERS)
+                           (cons
+                            (list (user-username w) (user-tab w) "pester"
+                                  (list (user-text w) (user-text-color w)))
+                            (append (reverse
+                                     (rest
+                                      (reverse
+                                       (filter (lambda (x) (or (string=? (second x) (user-tab w))
+                                                               (string=? (first x) (user-tab w))))
+                                               (user-pesters w)))))
+                                    (filter (lambda (x) (not (or (string=? (second x) (user-tab w))
+                                                                 (string=? (first x) (user-tab w)))))
+                                            (user-pesters w))))]
+                          [(> (length (filter (lambda (x)
+                                                (or (string=? (second x) (user-tab w))
+                                                    (string=? (first x) (user-tab w))))
+                                              (user-pesters w))) 0)
+                           (cons (list (user-username w) (user-tab w) "pester"
+                                       (list (user-text w) (user-text-color w))) (user-pesters w))]
+                          [else (list
+                                 (list (user-username w) (user-tab w) "pester"
+                                       (list (user-text w) (user-text-color w)))
+                                 (list (user-username w) (user-tab w) "pester"
+                                       (list (string-append "-- " (user-username w) " [" (get-initials (user-username w)) "] began pestering "
+                                                            (user-tab w) " [" (get-initials (user-tab w)) "] at " (number->string (date-hour (current-date))) ":"
+                                                            (number->string (date-minute (current-date))) " --") "black")))])
                         (user-requests w) (user-tab w) "")
-             (list (user-username w) (user-tab w) "pester"
-                   (list (user-text w) (user-text-color w)))))])]
+             (if (> (length (filter (lambda (x)
+                                      (or (string=? (second x) (user-tab w))
+                                          (string=? (first x) (user-tab w))))
+                                    (user-pesters w))) 0)
+                 (list (user-username w) (user-tab w) "pester" (list (user-text w) (user-text-color w)))
+                 (list
+                  (list (user-username w) (user-tab w) "pester"
+                        (list (string-append "-- " (user-username w) " [" (get-initials (user-username w)) "] began pestering "
+                                             (user-tab w) " [" (get-initials (user-tab w)) "] at " (number->string (date-hour (current-date))) ":"
+                                             (number->string (date-minute (current-date))) " --") "black"))
+                  (list (user-username w) (user-tab w) "pester"
+                        (list (user-text w) (user-text-color w)))))))])]
     ;; send request button
     [(and (> x 760) (> y 560) (string=? (user-tab w) "requests") (not (string=? (user-text w) "")))
      (make-package
@@ -1044,22 +1141,54 @@
             [else (if (< i 25)
                       (first (first l))
                       (select-friend (- i 25) (rest l)))]))]
-       (make-user (user-username w) (user-status w) (user-text-color w)
-                  (map (lambda (f)
-                         (if (string=? (first f)
-                                       (select-friend (- y 78)
-                                                      (get-group
-                                                       (user-friends w)
-                                                       (user-viewing w))))
-                             (list (first f) (second f) false)
-                             f)) (user-friends w))
-                  (user-viewing w) (user-pesters w)
-                  (user-requests w) (select-friend
-                                     (- y 78)
-                                     (get-group (user-friends w) (user-viewing w)))
-                  ""))]
+       (if
+        (string=? (select-friend
+                   (- y 78)
+                   (get-group (user-friends w) (user-viewing w))) (user-tab w))
+        w
+        (if (> (length (filter (lambda (x)
+                                 (or (string=? (second x) (user-tab w))
+                                     (string=? (first x) (user-tab w))))
+                               (user-pesters w))) 0)
+            (make-package
+             (make-user (user-username w) (user-status w) (user-text-color w)
+                        (map (lambda (f)
+                               (if (string=? (first f)
+                                             (select-friend (- y 78)
+                                                            (get-group
+                                                             (user-friends w)
+                                                             (user-viewing w))))
+                                   (list (first f) (second f) false)
+                                   f)) (user-friends w))
+                        (user-viewing w) (filter (lambda (x) (not (or (string=? (user-tab w) (first x))
+                                                                      (string=? (user-tab w) (second x))))) (user-pesters w))
+                        (user-requests w) (select-friend
+                                           (- y 78)
+                                           (get-group (user-friends w) (user-viewing w)))
+                        "")
+             (list (user-username w) (user-tab w) "pester"
+                   (list
+                    (string-append "-- " (user-username w) " [" (get-initials (user-username w)) "] ceased pestering "
+                                   (user-tab w) " [" (get-initials (user-tab w)) "] at " (number->string (date-hour (current-date))) ":"
+                                   (number->string (date-minute (current-date))) " --")
+                    "black")))
+            (make-user (user-username w) (user-status w) (user-text-color w)
+                       (map (lambda (f)
+                              (if (string=? (first f)
+                                            (select-friend (- y 78)
+                                                           (get-group
+                                                            (user-friends w)
+                                                            (user-viewing w))))
+                                  (list (first f) (second f) false)
+                                  f)) (user-friends w))
+                       (user-viewing w) (filter (lambda (x) (not (or (string=? (user-tab w) (first x))
+                                                                     (string=? (user-tab w) (second x))))) (user-pesters w))
+                       (user-requests w) (select-friend
+                                          (- y 78)
+                                          (get-group (user-friends w) (user-viewing w)))
+                       ""))))]
     ;; cycle friends
-    [(and (> (length (user-friends w)) VIEWINT) (> y 50) (< x 78) (> x 270) (< x 310))
+    [(and (> (length (user-friends w)) VIEWINT) (> y 50) (< y 78) (> x 270) (< x 310))
      (make-user (user-username w) (user-status w) (user-text-color w) (user-friends w)
                 (update-viewing (user-viewing w) (length (user-friends w)))
                 (user-pesters w) (user-requests w) (user-tab w) (user-text w))]
@@ -1109,7 +1238,7 @@
 ;; main
 (define (main w)
   (big-bang w
-            [name "Pesterchum v.0.1"]
+            [name "Pesterchum (beta)"]
             [register (read-file "server_ip.txt")]
             [port 9000]
             [on-receive receive-message]
