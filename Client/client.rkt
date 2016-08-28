@@ -2,7 +2,7 @@
 
 (require 2htdp/universe)
 (require 2htdp/image)
-(require 2htdp/batch-io)
+(require net/url)
 (require racket/date)
 
 ;; -----------------------------------------------------------------------------------------
@@ -1239,7 +1239,16 @@
 (define (main w)
   (big-bang w
             [name "Pesterchum (beta)"]
-            [register (read-file "server_ip.txt")]
+            [register (substring (port->string
+                                  (get-pure-port
+                                   (string->url
+                                    "https://raw.githubusercontent.com/nathanmichaelallen/Pesterchum-v.0.1/master/Client/server-ip")))
+                                 0 (- (string-length
+                                       (port->string
+                                        (get-pure-port
+                                         (string->url
+                                          "https://raw.githubusercontent.com/nathanmichaelallen/Pesterchum-v.0.1/master/Client/server-ip"))))
+                                      1))]
             [port 9000]
             [on-receive receive-message]
             [to-draw render]
