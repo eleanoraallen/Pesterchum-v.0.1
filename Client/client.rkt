@@ -140,27 +140,27 @@
 (define CHUMMY (overlay/align "left" "middle"
                               (beside (rectangle 27 0 'solid 'gold)
                                       (pestertext " CHUMMY" 14 'black))
-                              (bitmap/file "button1.png")))
+                              (bitmap/url "http://i.imgur.com/YvQ3JqE.png")))
 (define BULLY (overlay/align "left" "middle"
                              (beside (rectangle 27 0 'solid 'gold)
                                      (pestertext " BULLY" 14 'black))
-                             (bitmap/file "button1.png")))
+                             (bitmap/url "http://i.imgur.com/YvQ3JqE.png")))
 (define PALSY (overlay/align "left" "middle"
                              (beside (rectangle 27 0 'solid 'gold)
                                      (pestertext " PALSY" 14 'black))
-                             (bitmap/file "button1.png")))
+                             (bitmap/url "http://i.imgur.com/YvQ3JqE.png")))
 (define PEPPY (overlay/align "left" "middle"
                              (beside (rectangle 27 0 'solid 'gold)
                                      (pestertext " PEPPY" 14 'black))
-                             (bitmap/file "button1.png")))
+                             (bitmap/url "http://i.imgur.com/YvQ3JqE.png")))
 (define CHIPPER (overlay/align "left" "middle"
                                (beside (rectangle 22 0 'solid 'gold)
                                        (pestertext " CHIPPER" 14 'black))
-                               (bitmap/file "button1.png")))
+                               (bitmap/url "http://i.imgur.com/YvQ3JqE.png")))
 (define RANCOROUS (overlay/align "left" "middle"
                                  (beside (rectangle 21 0 'solid 'red)
                                          (pestertext " RANCOROUS" 11 'black))
-                                 (bitmap/file "button2.png")))
+                                 (bitmap/url "http://i.imgur.com/3VgsTP5.png")))
 
 ;; Status Button Highlight
 (define HIGHLIGHT (overlay (rectangle 93 38 'outline 'black) (rectangle 95 40 'outline 'black)))
@@ -200,7 +200,7 @@
      (overlay/align
       "middle" "top"
       (above (rectangle 0 30 'solid 'pink)
-             (pestertext "PESTERCHUM beta" 85 'white)) 
+             (pestertext "PESTERCHUM" 85 'white)) 
       (overlay
        (above (if (and (string=? (user-login-username w) "")
                        (not (= (user-login-editing w) 1)))
@@ -453,7 +453,7 @@
 (define (render-sidebar w)
   (overlay
    (above
-    (pestertext "PESTERCHUM beta" 35 'white)
+    (pestertext "PESTERCHUM" 35 'white)
     (rectangle 0 5 'solid 'pink)
     (beside (rectangle 8 0 'solid 'pink)
             (above/align
