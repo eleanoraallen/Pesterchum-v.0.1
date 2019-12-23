@@ -134,10 +134,7 @@
 
 ;; pestertext : string int color --> image
 ;; takes a string, int, and color and outputs a coresponding text image
-(define (pestertext t s c)
-  (if (image-color? c)
-      (text/font t s c "Courier New" 'default 'normal 'bold false)
-      (text/font t s "black" "Courier New" 'default 'normal 'bold false)))
+(define (pestertext t s c) (text/font t s c "Courier New" 'default 'normal 'bold false))
 
 ;; Status Buttons:
 (define CHUMMY (overlay/align "left" "middle"
